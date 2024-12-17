@@ -6,6 +6,10 @@ from math import isclose
 
 from lp import LP
 
+"""
+Deposit tests
+"""
+
 def test_deposit1():
     g = LP()
     g.deposit("A", 100, "ETH")
@@ -82,6 +86,10 @@ def test_deposit4():
     assert(g.get_debts("T1","C") == 0)
     assert(g.get_debts("T2","C") == 0)
 
+"""
+Borrow tests
+"""
+
 def test_borrow1():
     g = LP()
     g.set_price("ETH", 1)
@@ -152,9 +160,7 @@ def test_borrow5():
     xr_pre = g.get_xr()
     g.deposit('A',1, 'T')
     xr_post = g.get_xr()
-    for token in xr_pre:
-        assert isclose(xr_pre[token], xr_post[token], abs_tol=1e-3)
-    # assert(g.get_debts('T','A') == 5)
+    assert(xr_post == xr_pre)
 
 def test_borrow5():
     g = LP()
@@ -173,8 +179,21 @@ def test_borrow5():
     g.deposit('A', 1, 'T')
     assert(g.lastReverted == False)
     xr_post = g.get_xr()
-    for token in xr_pre:
-        assert isclose(xr_pre[token], xr_post[token], abs_tol=1e-3)
+    assert xr_post == xr_pre
+
+def test_borrow6():
+    g = LP()
+    g.deposit('B', 1, 'U')
+    g.deposit('A', 2, 'T')
+    g.borrow ('A', 1, 'U')
+    xr_pre = g.get_xr()
+    g.deposit('A', 1, 'U')
+    xr_post = g.get_xr()
+    assert xr_post == xr_pre
+
+"""
+Accrue tests
+"""
 
 def test_accrue1():
     g = LP()
@@ -207,6 +226,21 @@ def test_accrue1():
     assert(1.6 <= g.collateral("B") <= 1.7)
     assert(1.3 <= g.collateral("C") <= 1.4)
 
+def test_accrue2():
+    g = LP()
+    g.deposit(address='A', amount=2, token='T')
+    g.borrow(address='A', amount=1, token='T')
+    g.accrue_interest()
+    xr_pre = g.get_xr()
+    g.accrue_interest()
+    xr_post = g.get_xr()
+    for token in xr_pre:
+        assert xr_pre[token] < xr_post[token]
+
+"""
+Repay tests
+"""
+
 def test_repay1():
     g = LP()
     g.set_price("T0", 1)
@@ -230,6 +264,10 @@ def test_repay1():
     g.repay("C", 15, "T0")
     assert(g.get_reserves("T0") == 135)
     assert(20 <= g.get_debts("T0","C") <= 30)
+
+"""
+Redeem tests
+"""
 
 def test_redeem1():
     g = LP()

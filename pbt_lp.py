@@ -58,15 +58,61 @@ class WrappedLP(LP):
         test_deposit_XR
         checks that the exchange rate (XR) of all tokens is preserved by a deposit
     """
-
     @rule(address=text(alphabet="ABCDEF",min_size=1,max_size=1), amount=integers(min_value=1,max_value=100), token=text(alphabet="TUVXYZ",min_size=1,max_size=1))
     def test_deposit_XR(self, address, amount, token):	
         xr_pre = super().get_xr()
         super().deposit(address, amount, token)
-    
+        xr_post = super().get_xr()
+        assert xr_post == xr_pre
+
+    """
+    Rule: 
+        test_borrow_XR
+        checks that the exchange rate (XR) of all tokens is preserved by a borrow
+    """
+    @rule(address=text(alphabet="ABCDEF",min_size=1,max_size=1), amount=integers(min_value=1,max_value=100), token=text(alphabet="TUVXYZ",min_size=1,max_size=1))
+    def test_borrow_XR(self, address, amount, token):	
+        xr_pre = super().get_xr()
+        super().borrow(address, amount, token)
+        xr_post = super().get_xr()
+        assert xr_post == xr_pre
+
+    """
+    Rule: 
+        test_repay_XR
+        checks that the exchange rate (XR) of all tokens is preserved by a repay
+    """
+    @rule(address=text(alphabet="ABCDEF",min_size=1,max_size=1), amount=integers(min_value=1,max_value=100), token=text(alphabet="TUVXYZ",min_size=1,max_size=1))
+    def test_repay_XR(self, address, amount, token):	
+        xr_pre = super().get_xr()
+        super().repay(address, amount, token)
+        xr_post = super().get_xr()
+        assert xr_post == xr_pre
+
+    """
+    Rule: 
+        test_redeem_XR
+        checks that the exchange rate (XR) of all tokens is preserved by a redeem
+    """
+    @rule(address=text(alphabet="ABCDEF",min_size=1,max_size=1), amount=integers(min_value=1,max_value=100), token=text(alphabet="TUVXYZ",min_size=1,max_size=1))
+    def test_redeem_XR(self, address, amount, token):	
+        xr_pre = super().get_xr()
+        super().redeem(address, amount, token)
+        xr_post = super().get_xr()
+        assert xr_post == xr_pre
+
+    """
+    Rule: 
+        test_accrue_interest_XR
+        checks that the exchange rate (XR) of all tokens is preserved by a interest accrual
+    """
+    @rule()
+    def test_accrue_interest_XR(self):	
+        xr_pre = super().get_xr()
+        super().accrue_interest()
         xr_post = super().get_xr()
         for token in xr_pre:
-            assert math.isclose(xr_pre[token], xr_post[token], abs_tol=1e-3)
+            assert xr_pre[token] < xr_post[token]
 
 TestWrappedLP = WrappedLP.TestCase
 

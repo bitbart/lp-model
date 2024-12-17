@@ -1,5 +1,6 @@
 import math # For math.inf
 from math import isclose
+from fractions import Fraction
 
 # from hypothesis import note, assume, settings
 # from hypothesis.strategies import *
@@ -46,9 +47,9 @@ class LP(RuleBasedStateMachine):
 
     def get_price(self, token):
         if token not in self.prices:
-            return 1 # default price
+            return Fraction(1) # default price
         else:
-            return self.prices[token]
+            return Fraction(self.prices[token])
 
     def get_xr(self):
         xr = {tok: self.XR(tok) for tok in self.reserves}
@@ -83,19 +84,19 @@ class LP(RuleBasedStateMachine):
 
     def XR(self, token):
         if self.tok_supply(token) == 0:
-            return 1
+            return Fraction(1)
         else:
-            return (self.reserves[token] + self.tok_debts(token)) / self.tok_supply(token) 
+            return Fraction(self.reserves[token] + self.tok_debts(token), self.tok_supply(token)) 
 
     def val_minted(self, address):
-        val = 0
+        val = Fraction(0)
         for token in self.minted:
             if address in self.minted[token]:
                 val += self.minted[token][address] * self.XR(token) * self.get_price(token)
         return val
 
     def val_debts(self, address):
-        val = 0
+        val = Fraction(0)
         for token in self.debts:
             if address in self.debts[token]:
                 val += self.debts[token][address] * self.get_price(token)
@@ -104,7 +105,7 @@ class LP(RuleBasedStateMachine):
     def collateral(self, address):
         if self.val_debts(address) == 0:
             return math.inf # No debts to collateralize (+inf)
-        return self.val_minted(address) / self.val_debts(address)
+        return Fraction(self.val_minted(address), self.val_debts(address))
 
     def is_collateralized(self, address):
         if self.val_debts(address) == 0:
@@ -150,16 +151,15 @@ class LP(RuleBasedStateMachine):
             self.debts[token][address] = 0
 
             self.minted[token] = {}
-            self.minted[token][address] = amount / self.XR(token)
+            self.minted[token][address] = Fraction(amount, self.XR(token))
         else:
             xr = self.XR(token)
             
             self.reserves[token] += amount
             if address not in self.minted[token]:
-                self.debts[token][address] = 0
-                self.minted[token][address] = amount / xr
+                self.minted[token][address] = Fraction(amount, xr)
             else:
-                self.minted[token][address] += amount / xr
+                self.minted[token][address] += Fraction(amount, xr)
 
         self.lastReverted = False
 
@@ -226,12 +226,14 @@ class LP(RuleBasedStateMachine):
         self.lastReverted = False
 
     def interest_rate(self, token):
-        return 12/100
+        return Fraction(12, 100)
     
     def accrue_interest(self):
         for token in self.debts:
             for address in self.debts[token]:
                 self.debts[token][address] += self.debts[token][address] * self.interest_rate(token)
+
+        self.lastReverted = False
 
     def redeem(self, address, amount, token):
         amount_rdm = amount * self.XR(token)
