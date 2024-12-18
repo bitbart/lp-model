@@ -4,4 +4,5 @@ B:borrow(30:T0)
 accrue_interest
 B:repay(5:T0)
 set_price(T0,1.3)
+A:liquidate(11:T0,B,T1)
 A:redeem(10:T0)

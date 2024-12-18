@@ -18,8 +18,8 @@ def revert(msg):
     return
 
 from collections import namedtuple # for Constants
-Constants = namedtuple('Constants', ['Cmin'])
-LP_constants = Constants(1.5)
+Constants = namedtuple('Constants', ['Cmin','Rliq'])
+LP_constants = Constants(1.5, 1.1)
 
 
 class LP(RuleBasedStateMachine):
@@ -326,6 +326,68 @@ class LP(RuleBasedStateMachine):
 
         self.lastReverted = False
 
+    def liquidate(self, address, amount, token_debt, address_debtor, token_minted):
+        log.info(f"{address}: liquidate({amount}:{token_debt}, {address_debtor}, {token_minted})")
+
+        amount_minted = Fraction(amount,self.XR(token_minted)) * Fraction(self.get_price(token_debt), self.get_price(token_minted)) * Fraction(LP_constants.Rliq)
+
+        if amount <= 0:
+            log.warning("Liquidate amount must be greater than zero.")
+            self.lastReverted = True
+            return
+        elif token_debt not in self.debts:
+            log.warning(f"Token {token_debt} not found in debts.")
+            self.lastReverted = True
+            return
+        elif address_debtor not in self.debts[token_debt]:
+            log.warning(f"Address {address_debtor} not found in debts.")
+            self.lastReverted = True
+            return
+        elif amount > self.debts[token_debt][address_debtor]:
+            log.warning("Insufficient debts to repay.")
+            self.lastReverted = True
+            return 
+        elif token_minted not in self.minted:
+            log.warning(f"Token {token_minted} not found in minted.")
+            self.lastReverted = True
+            return
+        elif address_debtor not in self.minted[token_minted]:
+            log.warning(f"Address {address_debtor} not found in minted.")
+            self.lastReverted = True
+            return
+        elif amount_minted > self.minted[token_minted][address_debtor]:
+            log.warning("Insufficient minted tokens to redeem.")
+            self.lastReverted = True
+            return
+        elif self.collateral(address_debtor) >= LP_constants.Cmin:
+            log.warning("Address {address_debtor} is collateralized.")
+            self.lastReverted = True
+            return
+        
+        self.reserves[token_debt] += amount
+        self.debts[token_debt][address_debtor] -= amount
+
+        if address not in self.minted[token_minted]:
+            self.minted[token_minted][address] = amount_minted
+        else:
+            self.minted[token_minted][address] += amount_minted
+
+        self.minted[token_minted][address_debtor] -= amount_minted
+
+        if self.collateral(address_debtor) > LP_constants.Cmin:
+            log.warning(f"Address {address_debtor} is now collateralized.")
+
+            # reverts the transaction
+            self.reserves[token_debt] -= amount
+            self.debts[token_debt][address_debtor] += amount
+            self.minted[token_minted][address] -= amount_minted
+            self.minted[token_minted][address_debtor] += amount_minted
+
+            self.lastReverted = True
+            return
+        
+        self.lastReverted = False
+
 
     # dummy rule to avoid Hypothesis warning
     @rule()
@@ -368,7 +430,7 @@ def main():
                 if '(' in rest:
                     method, args = rest.split('(', 1)
                     args = args.strip(')')
-                    
+
                     # Parse arguments
                     parsed_args = []
                     for arg in args.split(','):
