@@ -43,6 +43,14 @@ class WrappedLP(LP):
     def redeem(self, address, amount, token):
         super().redeem(address, amount, token)
 
+    @rule(address=text(alphabet="ABCDEF",min_size=1,max_size=1), 
+          amount_debt=integers(min_value=1,max_value=100), 
+          token_debt=text(alphabet="TUVXYZ",min_size=1,max_size=1),
+          address_debtor=text(alphabet="ABCDEF",min_size=1,max_size=1),
+          token_minted=text(alphabet="TUVXYZ",min_size=1,max_size=1))
+    def liquidate(self, address, amount_debt, token_debt, address_debtor, token_minted):
+        super().liquidate(address, amount_debt, token_debt, address_debtor, token_minted)
+
     """
     Rule: 
         test_deposit_notrevert 
@@ -103,6 +111,22 @@ class WrappedLP(LP):
 
     """
     Rule: 
+        test_liquidate_XR
+        checks that the exchange rate (XR) of all tokens is preserved by a liquidate
+    """
+    @rule(address=text(alphabet="ABCDEF",min_size=1,max_size=1), 
+          amount_debt=integers(min_value=1,max_value=100), 
+          token_debt=text(alphabet="TUVXYZ",min_size=1,max_size=1),
+          address_debtor=text(alphabet="ABCDEF",min_size=1,max_size=1),
+          token_minted=text(alphabet="TUVXYZ",min_size=1,max_size=1))
+    def test_liquidate_XR(self, address, amount_debt, token_debt, address_debtor, token_minted):
+        xr_pre = super().get_xr()
+        super().liquidate(address, amount_debt, token_debt, address_debtor, token_minted)
+        xr_post = super().get_xr()
+        assert xr_post == xr_pre
+
+    """
+    Rule: 
         test_accrue_interest_XR
         checks that the exchange rate (XR) of all tokens increases upon interest accruals
     """
@@ -123,5 +147,5 @@ class WrappedLP(LP):
 TestWrappedLP = WrappedLP.TestCase
 
 WrappedLP.TestCase.settings = settings(
-    max_examples=1000, stateful_step_count=20
+    max_examples=2000, stateful_step_count=20
 )
