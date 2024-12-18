@@ -104,7 +104,7 @@ class WrappedLP(LP):
     """
     Rule: 
         test_accrue_interest_XR
-        checks that the exchange rate (XR) of all tokens is preserved by a interest accrual
+        checks that the exchange rate (XR) of all tokens increases upon interest accruals
     """
     @rule()
     def test_accrue_interest_XR(self):	
@@ -113,6 +113,12 @@ class WrappedLP(LP):
         xr_post = super().get_xr()
         for token in xr_pre:
             assert xr_pre[token] < xr_post[token]
+
+    @invariant()
+    def test_XR_geq_1(self):	
+        xr = super().get_xr()
+        for token in xr:
+            assert xr[token] >= 1
 
 TestWrappedLP = WrappedLP.TestCase
 

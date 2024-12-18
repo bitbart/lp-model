@@ -6,9 +6,11 @@ from fractions import Fraction
 # from hypothesis.strategies import *
 from hypothesis.stateful import rule, RuleBasedStateMachine
 
-import logging as log
-
-log.basicConfig(format="%(levelname)s: %(message)s", level=log.DEBUG)
+import argparse
+import sys
+import logging
+logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
+log = logging.getLogger(__name__)
 
 def revert(msg):
     log.info(msg)
@@ -32,10 +34,45 @@ class LP(RuleBasedStateMachine):
         self.prices = {}    # prices map    {token: price}
         self.lastReverted = False
 
-    def pretty_print(self):
+    def pretty_print(self, precise=False):
         """
         Pretty-prints the internal state of the LP instance on a single line.
+
+        Parameters:
+        - precise (bool): If True, represent fractions as 'numerator/denominator'.
+                          If False, represent fractions as approximate floating-point values.
         """
+        from fractions import Fraction
+
+        def clean_repr(obj):
+            """
+            Recursively converts objects to a string representation
+            with custom formatting for dictionaries, lists, and fractions.
+            """
+            if isinstance(obj, dict):
+                return "{" + ", ".join(f"{k}: {clean_repr(v)}" for k, v in obj.items()) + "}"
+            elif isinstance(obj, list):
+                return "[" + ", ".join(clean_repr(v) for v in obj) + "]"
+            elif isinstance(obj, Fraction):
+                return f"{obj.numerator}/{obj.denominator}" if precise else format_float(float(obj))
+            elif isinstance(obj, float):
+                return format_float(obj)
+            elif isinstance(obj, str):
+                return obj  # Return strings without quotes
+            else:
+                return repr(obj)  # Default representation for other types
+
+        def format_float(value):
+            """
+            Format a floating-point number cleanly:
+            - Remove unnecessary decimals and trailing zeros.
+            - Keep precision up to meaningful digits.
+            """
+            if value.is_integer():
+                return f"{int(value)}"  # Represent as an integer if no fractional part
+            else:
+                return f"{value:.6g}"  # Use general format with up to 6 significant digits
+
         state = {
             "Reserves": self.reserves,
             "Debts": self.debts,
@@ -43,7 +80,7 @@ class LP(RuleBasedStateMachine):
             "Prices": self.prices,
             "LastReverted": self.lastReverted
         }
-        print(f"LP: {state}")
+        print(f"{clean_repr(state)}")
 
     def get_price(self, token):
         if token not in self.prices:
@@ -130,16 +167,19 @@ class LP(RuleBasedStateMachine):
             self.set_price("BTC", 50000)
             # Sets the price of the 'BTC' token to 50000.
         """
+        log.info(f"set_price({token}, {price})")
         if price <= 0:
-            log.info("Price must be greater than zero.")
+            log.warning("Price must be greater than zero.")
             self.lastReverted = True
             return
         self.prices[token] = price
         self.lastReverted = False
 
     def deposit(self, address, amount, token):
+        log.info(f"{address}: deposit({amount}:{token})")
+
         if amount <= 0:
-            log.info("Deposit amount must be greater than zero.")
+            log.warning("Deposit amount must be greater than zero.")
             self.lastReverted = True
             return
         
@@ -164,16 +204,18 @@ class LP(RuleBasedStateMachine):
         self.lastReverted = False
 
     def borrow(self, address, amount, token):
+        log.info(f"{address}: borrow({amount}:{token})")
+
         if amount <= 0:
-            log.info("Deposit amount must be greater than zero.")
+            log.warning("Deposit amount must be greater than zero.")
             self.lastReverted = True
             return
         elif token not in self.reserves:
-            log.info("Token not found in reserves.")
+            log.warning("Token not found in reserves.")
             self.lastReverted = True
             return
         elif amount > self.reserves[token]:
-            log.info("Insufficient reserves to borrow.")
+            log.warning("Insufficient reserves to borrow.")
             self.lastReverted = True
             return
         
@@ -190,7 +232,7 @@ class LP(RuleBasedStateMachine):
             self.debts[token][address] += amount
 
         if self.collateral(address) < LP_constants.Cmin:
-            log.info("Address is not collateralized.")
+            log.warning("Address is not collateralized.")
             # reverts the transaction
             self.reserves[token] += amount
             self.debts[token][address] -= amount
@@ -200,20 +242,22 @@ class LP(RuleBasedStateMachine):
         self.lastReverted = False
 
     def repay(self, address, amount, token):
+        log.info(f"{address}: repay({amount}:{token})")
+
         if amount <= 0:
-            log.info("Repay amount must be greater than zero.")
+            log.warning("Repay amount must be greater than zero.")
             self.lastReverted = True
             return
         elif token not in self.debts:
-            log.info("Token not found in reserves.")
+            log.warning("Token not found in reserves.")
             self.lastReverted = True
             return
         elif address not in self.debts[token]:
-            log.info("Address not found in debts.")
+            log.warning("Address not found in debts.")
             self.lastReverted = True
             return 
         elif amount > self.debts[token][address]:
-            log.info("Insufficient debts to repay.")
+            log.warning("Insufficient debts to repay.")
             self.lastReverted = True
             return 
         
@@ -229,6 +273,7 @@ class LP(RuleBasedStateMachine):
         return Fraction(12, 100)
     
     def accrue_interest(self):
+        log.info("accrue_interest")
         for token in self.debts:
             for address in self.debts[token]:
                 self.debts[token][address] += self.debts[token][address] * self.interest_rate(token)
@@ -236,29 +281,31 @@ class LP(RuleBasedStateMachine):
         self.lastReverted = False
 
     def redeem(self, address, amount, token):
+        log.info(f"{address}: redeem({amount}:{token})")
+
         amount_rdm = amount * self.XR(token)
-        log.info(f"{address}: redeem({amount}:{token} minted)")
-        log.info(f"redeeming {amount_rdm}:{token}")
-        log.info(f"{address} collateral = {self.collateral(address)}")
+        # log.info(f"{address}: redeem({amount}:{token} minted)")
+        # log.info(f"redeeming {amount_rdm}:{token}")
+        # log.info(f"{address} collateral = {self.collateral(address)}")
 
         if amount <= 0:
-            log.info("Redeem amount must be greater than zero.")
+            log.warning("Redeem amount must be greater than zero.")
             self.lastReverted = True
             return
         elif token not in self.reserves:
-            log.info("Token not found in reserves.")
+            log.warning("Token not found in reserves.")
             self.lastReverted = True
             return
         elif address not in self.minted[token]:
-            log.info("Address not found in minted.")
+            log.warning("Address not found in minted.")
             self.lastReverted = True
             return
         elif amount > self.minted[token][address]:
-            log.info("Insufficient minted tokens to redeem.")
+            log.warning("Insufficient minted tokens to redeem.")
             self.lastReverted = True
             return
         elif amount_rdm > self.reserves[token]:
-            log.info("Insufficient reserves to redeem.")
+            log.warning("Insufficient reserves to redeem.")
             self.lastReverted = True
             return
         
@@ -269,9 +316,8 @@ class LP(RuleBasedStateMachine):
         self.reserves[token] -= amount_rdm
         self.minted[token][address] -= amount
 
-        log.info(f"{address} collateral = {self.collateral(address)}")
         if self.collateral(address) < LP_constants.Cmin:
-            log.info("Address is not collateralized.")
+            log.warning(f"Address {address} is under-collateralized (collateral = {self.collateral(address)}).")
             # reverts the transaction
             self.reserves[token] += amount_rdm
             self.minted[token][address] += amount
@@ -285,3 +331,95 @@ class LP(RuleBasedStateMachine):
     @rule()
     def dummy(self):
         pass
+
+
+# Run the main function if the script is executed directly
+def main():
+    """
+    Main function to process a file with transaction commands.
+    """
+    parser = argparse.ArgumentParser(description="Simulate a Lending Pool from a transaction trace file.")
+    parser.add_argument("filename", help="The input file containing transaction trace.")
+    parser.add_argument("-p", "--precise", action="store_true",  help="Use precise fraction representation in output.")
+    
+    args = parser.parse_args()
+    is_precise = args.precise
+
+    try:
+        with open(args.filename, "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        print(f"Error: File '{args.filename}' not found.")
+        sys.exit(1)
+    
+    # Create an instance of LP
+    lp = LP()
+
+    # Process each line
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        try:
+            # Example input format: A:deposit(1:T)
+            if ':' in line:
+                address, rest = line.split(':', 1)
+                if '(' in rest:
+                    method, args = rest.split('(', 1)
+                    args = args.strip(')')
+                    
+                    # Parse arguments
+                    parsed_args = []
+                    for arg in args.split(','):
+                        if ':' in arg:  # For example, "1:T"
+                            amount, token = arg.split(':')
+                            parsed_args.extend([int(amount), token])
+                        else:
+                            parsed_args.append(arg.strip())
+
+                    # Call the method dynamically
+                    if hasattr(lp, method):
+                        getattr(lp, method)(address, *parsed_args)
+                        lp.pretty_print(precise=is_precise)
+                    else:
+                        print(f"Error: Method '{method}' not found in LP class.")
+                else:
+                    method = rest
+                    if hasattr(lp, method):
+                        getattr(lp, method)()
+                        lp.pretty_print(precise=is_precise)
+                    else:
+                        print(f"Error: Method '{method}' not found in LP class.")
+            else:
+                # Non-address-prefixed command, e.g., accrue_interest, set_price(T,2)
+                if '(' in line:
+                    method, args = line.split('(', 1)
+                    args = args.strip(')')
+                    parsed_args = []
+                    for arg in args.split(','):
+                        if arg.replace('.','',1).isdigit(): # arg is a number
+                            parsed_args.append(Fraction(arg))
+                        else:
+                            parsed_args.append(arg.strip())
+                    if hasattr(lp, method):
+                        getattr(lp, method)(*parsed_args)
+                        lp.pretty_print(precise=is_precise)
+                    else:
+                        print(f"Error: Method '{method}' not found in LP class.")
+
+                else:
+                    # No arguments, e.g., accrue_interest
+                    method = line
+                    if hasattr(lp, method):
+                        getattr(lp, method)()
+                        lp.pretty_print(precise=is_precise)
+                    else:
+                        print(f"Error: Method '{method}' not found in LP class.")
+
+        except Exception as e:
+            print(f"Error processing line '{line}': {e}")
+
+# Run the main function if the script is executed directly
+if __name__ == "__main__":
+    main()
