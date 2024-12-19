@@ -293,3 +293,34 @@ def test_redeem1():
     assert(g.get_minted("T2", "B") >= 11)
     g.redeem("B", 8, "T2")
     assert(g.get_reserves("T2") == 142)
+
+
+"""
+Liquidate tests
+"""
+
+def test_liquidate1():
+    g = LP()
+
+    g.deposit("A", 50, "T0")
+    g.deposit("B", 50, "T1")
+    g.borrow ("B", 30, "T0")
+    g.accrue_interest()
+    g.repay  ("B",  5, "T0")
+    g.set_price("T0",1.3)
+    g.liquidate("A", 12, "T0", "B", "T1")
+    assert(g.lastReverted == True)
+
+def test_liquidate2():
+    g = LP()
+
+    g.deposit("A", 50, "T0")
+    g.deposit("B", 50, "T1")
+    g.borrow ("B", 30, "T0")
+    g.accrue_interest()
+    g.repay  ("B",  5, "T0")
+    g.set_price("T0",1.3)
+    g.liquidate("A", 11, "T0", "B", "T1")
+    assert(g.lastReverted == False)
+    g.redeem("A", 10, "T0")
+    assert(g.lastReverted == False)

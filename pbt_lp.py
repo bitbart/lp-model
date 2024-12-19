@@ -147,5 +147,5 @@ class WrappedLP(LP):
 TestWrappedLP = WrappedLP.TestCase
 
 WrappedLP.TestCase.settings = settings(
-    max_examples=2000, stateful_step_count=20
+    max_examples=5000, stateful_step_count=20
 )
