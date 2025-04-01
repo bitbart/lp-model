@@ -18,8 +18,41 @@ def revert(msg):
     return
 
 from collections import namedtuple # for Constants
+# Cmin = inverse of the liquidation factor
+# Rliq = liquidation reward
 Constants = namedtuple('Constants', ['Cmin','Rliq'])
 LP_constants = Constants(1.5, 1.1)
+
+from fractions import Fraction
+
+def clean_repr(obj, precise=False):
+     """
+     Recursively converts objects to a string representation
+     with custom formatting for dictionaries, lists, and fractions.
+     """
+     if isinstance(obj, dict):
+         return "{" + ", ".join(f"{k}: {clean_repr(v)}" for k, v in obj.items()) + "}"
+     elif isinstance(obj, list):
+         return "[" + ", ".join(clean_repr(v) for v in obj) + "]"
+     elif isinstance(obj, Fraction):
+         return f"{obj.numerator}/{obj.denominator}" if precise else format_float(float(obj))
+     elif isinstance(obj, float):
+         return format_float(obj)
+     elif isinstance(obj, str):
+         return obj  # Return strings without quotes
+     else:
+         return repr(obj)  # Default representation for other types
+
+def format_float(value):
+    """
+    Format a floating-point number cleanly:
+    - Remove unnecessary decimals and trailing zeros.
+    - Keep precision up to meaningful digits.
+    """
+    if value.is_integer():
+        return f"{int(value)}"  # Represent as an integer if no fractional part
+    else:
+        return f"{value:.6g}"  # Use general format with up to 6 significant digits
 
 
 class LP(RuleBasedStateMachine):
@@ -33,7 +66,7 @@ class LP(RuleBasedStateMachine):
         self.minted = {}    # minted map    {token: {address: amount}}
         self.prices = {}    # prices map    {token: price}
         self.lastReverted = False
-
+         
     def pretty_print(self, precise=False):
         """
         Pretty-prints the internal state of the LP instance on a single line.
@@ -42,37 +75,6 @@ class LP(RuleBasedStateMachine):
         - precise (bool): If True, represent fractions as 'numerator/denominator'.
                           If False, represent fractions as approximate floating-point values.
         """
-        from fractions import Fraction
-
-        def clean_repr(obj):
-            """
-            Recursively converts objects to a string representation
-            with custom formatting for dictionaries, lists, and fractions.
-            """
-            if isinstance(obj, dict):
-                return "{" + ", ".join(f"{k}: {clean_repr(v)}" for k, v in obj.items()) + "}"
-            elif isinstance(obj, list):
-                return "[" + ", ".join(clean_repr(v) for v in obj) + "]"
-            elif isinstance(obj, Fraction):
-                return f"{obj.numerator}/{obj.denominator}" if precise else format_float(float(obj))
-            elif isinstance(obj, float):
-                return format_float(obj)
-            elif isinstance(obj, str):
-                return obj  # Return strings without quotes
-            else:
-                return repr(obj)  # Default representation for other types
-
-        def format_float(value):
-            """
-            Format a floating-point number cleanly:
-            - Remove unnecessary decimals and trailing zeros.
-            - Keep precision up to meaningful digits.
-            """
-            if value.is_integer():
-                return f"{int(value)}"  # Represent as an integer if no fractional part
-            else:
-                return f"{value:.6g}"  # Use general format with up to 6 significant digits
-
         state = {
             "Reserves": self.reserves,
             "Debts": self.debts,
@@ -109,22 +111,26 @@ class LP(RuleBasedStateMachine):
         if address not in self.debts[token]:
             return 0
         return self.debts[token][address]
-                
+    
+    # supply of minted (credit) tokens
     def tok_supply(self, token):
         if token not in self.minted:
             return 0
         else:
             return sum(self.minted[token].values())
 
+    # supply of debt tokens
     def tok_debts(self, token):
         return sum(self.debts[token].values())
 
+    # exchange rate of minted (credit) token
     def XR(self, token):
         if self.tok_supply(token) == 0:
             return Fraction(1)
         else:
             return Fraction(self.reserves[token] + self.tok_debts(token), self.tok_supply(token)) 
 
+    # net worth of minted (credit) tokens of a given address
     def val_minted(self, address):
         val = Fraction(0)
         for token in self.minted:
@@ -132,6 +138,7 @@ class LP(RuleBasedStateMachine):
                 val += self.minted[token][address] * self.XR(token) * self.get_price(token)
         return val
 
+    # net worth of debt tokens of a given address
     def val_debts(self, address):
         val = Fraction(0)
         for token in self.debts:
@@ -143,6 +150,11 @@ class LP(RuleBasedStateMachine):
         if self.val_debts(address) == 0:
             return math.inf # No debts to collateralize (+inf)
         return Fraction(self.val_minted(address), self.val_debts(address))
+
+    def health_factor(self, address):
+        if self.val_debts(address) == 0:
+            return math.inf # No debts to collateralize (+inf)
+        return Fraction(self.collateral(address), Fraction(LP_constants.Cmin))
 
     def is_collateralized(self, address):
         if self.val_debts(address) == 0:
@@ -221,6 +233,8 @@ class LP(RuleBasedStateMachine):
         
         assert(token in self.reserves)
 
+        log.info(f"pre:  H({address}) = {float(self.health_factor(address))}")
+
         # Removes amount units of token from the reserves
         self.reserves[token] -= amount
 
@@ -231,8 +245,10 @@ class LP(RuleBasedStateMachine):
         else:
             self.debts[token][address] += amount
 
+        log.info(f"post: H({address}) = {float(self.health_factor(address))}")
+
         if self.collateral(address) < LP_constants.Cmin:
-            log.warning("Address is not collateralized.")
+            log.warning(f"{address} is not collateralized")
             # reverts the transaction
             self.reserves[token] += amount
             self.debts[token][address] -= amount
@@ -265,9 +281,13 @@ class LP(RuleBasedStateMachine):
         assert(token in self.debts)
         assert(address in self.debts[token])
 
+        log.info(f"pre:  H({address}) = {float(self.health_factor(address))}")
+
         self.reserves[token] += amount
         self.debts[token][address] -= amount
         self.lastReverted = False
+
+        log.info(f"post: H({address}) = {float(self.health_factor(address))}")
 
     def interest_rate(self, token):
         return Fraction(12, 100)
@@ -286,7 +306,6 @@ class LP(RuleBasedStateMachine):
         amount_rdm = amount * self.XR(token)
         # log.info(f"{address}: redeem({amount}:{token} minted)")
         # log.info(f"redeeming {amount_rdm}:{token}")
-        # log.info(f"{address} collateral = {self.collateral(address)}")
 
         if amount <= 0:
             log.warning("Redeem amount must be greater than zero.")
@@ -313,8 +332,12 @@ class LP(RuleBasedStateMachine):
         assert(token in self.minted)
         assert(address in self.minted[token])
 
+        log.info(f"pre:  H({address}) = {float(self.health_factor(address))}")
+
         self.reserves[token] -= amount_rdm
         self.minted[token][address] -= amount
+
+        log.info(f"post: H({address}) = {float(self.health_factor(address))}")
 
         if self.collateral(address) < LP_constants.Cmin:
             log.warning(f"Address {address} is under-collateralized (collateral = {self.collateral(address)}).")
@@ -364,6 +387,8 @@ class LP(RuleBasedStateMachine):
             self.lastReverted = True
             return
         
+        log.info(f"pre:  H({address_debtor}) = {float(self.health_factor(address_debtor))}")
+
         self.reserves[token_debt] += amount
         self.debts[token_debt][address_debtor] -= amount
 
@@ -373,6 +398,8 @@ class LP(RuleBasedStateMachine):
             self.minted[token_minted][address] += amount_minted
 
         self.minted[token_minted][address_debtor] -= amount_minted
+
+        log.info(f"post: H({address_debtor}) = {float(self.health_factor(address_debtor))}")
 
         if self.collateral(address_debtor) > LP_constants.Cmin:
             log.warning(f"Address {address_debtor} is now collateralized.")
