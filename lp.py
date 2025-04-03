@@ -227,6 +227,7 @@ class LP(RuleBasedStateMachine):
             return 
         
         self.lastReverted = False
+        return amount
 
     def repay(self, address, amount, token):
         log.info(f"{address}: repay({amount}:{token})")
@@ -319,6 +320,7 @@ class LP(RuleBasedStateMachine):
             return
 
         self.lastReverted = False
+        return amount_rdm
 
     def liquidate(self, address, amount, token_debt, address_debtor, token_minted):
         log.info(f"{address}: liquidate({amount}:{token_debt}, {address_debtor}, {token_minted})")
@@ -443,14 +445,14 @@ def main():
                         getattr(lp, method)(address, *parsed_args)
                         lp.pretty_print(precise=is_precise)
                     else:
-                        print(f"Error: Method '{method}' not found in LP class.")
+                        log.error(f"Error: Method '{method}' not found in LP class.")
                 else:
                     method = rest
                     if hasattr(lp, method):
                         getattr(lp, method)()
                         lp.pretty_print(precise=is_precise)
                     else:
-                        print(f"Error: Method '{method}' not found in LP class.")
+                        log.error(f"Error: Method '{method}' not found in LP class.")
             else:
                 # Non-address-prefixed command, e.g., accrue_interest, set_price(T,2)
                 if '(' in line:
@@ -466,7 +468,7 @@ def main():
                         getattr(lp, method)(*parsed_args)
                         lp.pretty_print(precise=is_precise)
                     else:
-                        print(f"Error: Method '{method}' not found in LP class.")
+                        log.error(f"Error: Method '{method}' not found in LP class.")
 
                 else:
                     # No arguments, e.g., accrue_interest
@@ -475,10 +477,10 @@ def main():
                         getattr(lp, method)()
                         lp.pretty_print(precise=is_precise)
                     else:
-                        print(f"Error: Method '{method}' not found in LP class.")
+                        log.error(f"Error: Method '{method}' not found in LP class.")
 
         except Exception as e:
-            print(f"Error processing line '{line}': {e}")
+            log.error(f"Error processing line '{line}': {e}")
 
 # Run the main function if the script is executed directly
 if __name__ == "__main__":

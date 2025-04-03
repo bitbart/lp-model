@@ -1,3 +1,5 @@
+A:faucet(100:T0)
+B:faucet(50:T1)
 A:deposit(50:T0)
 B:deposit(50:T1)
 B:borrow(30:T0)
