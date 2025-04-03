@@ -16,6 +16,11 @@ pip3 install hypothesis
 
 To execute a sequence of transactions:
 ```bash
+python blockchain.py trace1.txt
+```
+
+To execute a sequence of transactions (LP-only, ignoring users' wallets):
+```bash
 python lp.py trace1.txt
 ```
 
