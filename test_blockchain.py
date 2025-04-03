@@ -12,10 +12,14 @@ Deposit tests
 
 def test_deposit1():
     b = Blockchain()
+
     b.faucet("A", 100, "ETH")
+    assert(b.net_worth("A") == 100)
+
     b.deposit("A", 100, "ETH")
     assert(b.lastReverted == False)
     assert(b.get_tokens("A","ETH") == 0)
+    assert(b.net_worth("A") == 100)
 
 def test_deposit2():
     b = Blockchain()

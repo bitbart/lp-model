@@ -27,6 +27,7 @@ python lp.py trace1.txt
 To execute unit tests:
 ```bash
 pytest test_lp.py
+pytest test_blockchain.py
 ```
 
 To execute property-based tests:
