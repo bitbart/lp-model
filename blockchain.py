@@ -24,6 +24,7 @@ class Blockchain:
         print(f"{clean_repr(self.wallets)} | ", end='')
         self.lp.pretty_print(precise)
 
+    # Mint tokens to an address
     def faucet(self, address, amount, token):
         log.info(f"{address}: faucet({amount}:{token})")
 
@@ -51,6 +52,31 @@ class Blockchain:
         if token not in self.wallets:
             self.wallets[token] = {}
         self.wallets[token][address] = amount
+
+    def net_worth(self, address):
+        """
+        Returns the net worth of an address in terms of all tokens.
+        """
+        net_worth = 0
+
+        # Value of tokens in address' wallet
+        for token, balance in self.wallets.items():
+            if address in balance:
+                net_worth += balance[address] * self.lp.get_price(token)
+
+        # Value of tokens in credit tokens
+        for token, balance in self.lp.minted.items():
+            if address in balance:
+                net_worth += balance[address] * self.lp.XR(token) * self.lp.get_price(token)
+
+        # Value of tokens in debit tokens
+        for token, balance in self.lp.debts.items():
+            if address in balance:
+                net_worth -= balance[address] * self.lp.get_price(token)
+
+        return net_worth
+    
+    # Method wrappers for the LP model
 
     def deposit(self, address, amount, token):
         if amount <= 0:
