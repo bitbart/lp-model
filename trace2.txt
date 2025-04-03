@@ -1,0 +1,7 @@
+A:deposit(100:T0)
+B:deposit(100:T1)
+B:borrow(50:T0)
+accrue_interest
+accrue_interest
+accrue_interest
+A:liquidate(2:T0,B,T1)
