@@ -1,0 +1,3 @@
+tWliq (x) = if ( s.rval(4) == x ) then s.rval(6) else #tWliq (x) fi ;
+
+eval parametric(E[tWliq(x)],x,50.0,50.0,150.0);

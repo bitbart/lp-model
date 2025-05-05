@@ -1,0 +1,3 @@
+tHB (n) = if ( s.rval(4) == n ) then s.rval(5) else #tHB (n) fi ;
+
+eval E[tHB(200)];

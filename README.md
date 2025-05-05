@@ -12,6 +12,14 @@ For property-based testing with Hypothesis:
 pip3 install hypothesis
 ```
 
+For statistical model checking with MultiVeStA:
+```bash
+pip3 install numpy
+pip3 install matplotlib
+pip3 install py4j
+sudo apt install openjdk-11-jdk --fix-missing
+```
+
 ## Usage
 
 To execute a sequence of transactions:
@@ -33,4 +41,9 @@ pytest test_blockchain.py
 To execute property-based tests:
 ```bash
 pytest pbt_lp.py
+```
+
+To execute statistical model checking:
+```bash
+java -jar multivesta.jar -c -m MV_python_integrator.py -sm true -f q1.multiquatex -l 2 -sots 1 -sd vesta.python.simpy.SimPyState -vp true -bs 30 -ds [10] -a 0.05 -otherParams "python3"
 ```
