@@ -1,0 +1,7 @@
+M:faucet(100:T0)
+B:faucet(100:T0)
+B:deposit(50:T0)
+B:borrow(30:T0)
+accrue_interest
+M:liquidate(10:T0,B,T0)
+M:redeem(10:T0)
