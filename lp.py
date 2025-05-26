@@ -276,6 +276,7 @@ class LP(RuleBasedStateMachine):
         log.info(f"{address}: redeem({amount}:{token})")
 
         amount_rdm = amount * self.XR(token)
+        log.info(f"XR({token}) = {self.XR(token)}")
         # log.info(f"{address}: redeem({amount}:{token} minted)")
         # log.info(f"redeeming {amount_rdm}:{token}")
 
@@ -318,6 +319,8 @@ class LP(RuleBasedStateMachine):
             self.minted[token][address] += amount
             self.lastReverted = True
             return
+
+        log.info(f"XR({token}) = {self.XR(token)}")
 
         self.lastReverted = False
         return amount_rdm
