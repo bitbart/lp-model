@@ -28,10 +28,10 @@ class Blockchain:
     def faucet(self, address, amount, token):
         log.info(f"{address}: faucet({amount}:{token})")
 
-        if amount <= 0:
-            log.warning("Faucet amount must be greater than zero.")
-            self.lastReverted = True
-            return
+        # if amount <= 0:
+        #     log.warning("Faucet amount must be greater than zero.")
+        #     self.lastReverted = True
+        #     return
 
         if token not in self.wallets:
             self.wallets[token] = {}

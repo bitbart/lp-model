@@ -22,7 +22,7 @@ from collections import namedtuple # for Constants
 # Cmin = inverse of the liquidation factor
 # Rliq = liquidation reward
 Constants = namedtuple('Constants', ['Cmin','Rliq'])
-LP_constants = Constants(1.5, 1.3)
+LP_constants = Constants(1.5, 1)
 
 from fractions import Fraction
 
@@ -262,7 +262,7 @@ class LP(RuleBasedStateMachine):
         log.info(f"post: H({address}) = {float(self.health_factor(address))}")
 
     def interest_rate(self, token):
-        return Fraction(1,2)     # Fraction(12, 100)
+        return Fraction(9,1)     # Fraction(12, 100)
     
     def accrue_interest(self):
         log.info("accrue_interest")
