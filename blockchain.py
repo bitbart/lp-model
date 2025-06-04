@@ -74,6 +74,7 @@ class Blockchain:
             if address in balance:
                 net_worth -= balance[address] * self.lp.get_price(token)
 
+        log.info(f"W({address}) = {net_worth}")
         return net_worth
     
     # Method wrappers for the LP model
@@ -219,6 +220,26 @@ class Blockchain:
         
         self.__set_tokens(address, token_debt, a_tok - amount)
 
+    def swap(self, address, amount_out, token_out, token_in):
+        if amount_out <= 0:
+            log.warning("Swap amount must be greater than zero.")
+            self.lastReverted = True
+            return
+        
+        a_tout = self.get_tokens(address,token_out)
+        a_tin = self.get_tokens(address,token_in)
+
+        if a_tout<amount_out:
+            log.warning(f"Address {address} has insufficient units of {token_out}")
+            self.lastReverted = True
+            return
+
+        amount_in = amount_out * self.lp.get_price(token_out) / self.lp.get_price(token_in)       
+
+        log.info(f"{address} swaps {amount_out}:{token_out} for {amount_in}:{token_in}")
+
+        self.__set_tokens(address, token_out, a_tout - amount_out)
+        self.__set_tokens(address, token_in, a_tin + amount_in)
 
 # Run the main function if the script is executed directly
 def main():
