@@ -18,12 +18,6 @@ def revert(msg):
     # raise ValueError(msg)
     return
 
-from collections import namedtuple # for Constants
-# Cmin = inverse of the liquidation factor
-# Rliq = liquidation reward
-Constants = namedtuple('Constants', ['Cmin','Rliq'])
-LP_constants = Constants(1.5, 1)
-
 from fractions import Fraction
 
 class LP(RuleBasedStateMachine):
@@ -37,6 +31,8 @@ class LP(RuleBasedStateMachine):
         self.minted = {}    # minted map    {token: {address: amount}}
         self.prices = {}    # prices map    {token: price}
         self.lastReverted = False
+        self.Tliq = Fraction(2, 3)  # Tliq = liquidation threshold
+        self.Rliq = Fraction(11,10) # Rliq = liquidation reward factor
          
     def pretty_print(self, precise=False):
         """
@@ -125,12 +121,25 @@ class LP(RuleBasedStateMachine):
     def health_factor(self, address):
         if self.val_debts(address) == 0:
             return math.inf # No debts to collateralize (+inf)
-        return Fraction(self.collateral(address), Fraction(LP_constants.Cmin))
+        return self.collateral(address) * self.Tliq
 
-    def is_collateralized(self, address):
-        if self.val_debts(address) == 0:
-            return True
-        return self.collateral(address) >= LP_constants.Cmin
+    def set_liq_threshold(self, tliq):
+        log.info(f"set_liq_threshold({tliq})")
+        if tliq < 0 or tliq > 1:
+            log.warning("Liquidation threshold must be between 0 and 1.")
+            self.lastReverted = True
+            return
+        self.Tliq = tliq
+        self.lastReverted = False
+
+    def set_liq_reward_factor(self, rliq):
+        log.info(f"set_liq_reward_factor({rliq})")
+        if rliq < 1:
+            log.warning("Liquidation reward factor must be greater than 1.")
+            self.lastReverted = True
+            return
+        self.rLiq = rliq
+        self.lastReverted = False
 
     def set_price(self, token, price):
         """
@@ -218,7 +227,7 @@ class LP(RuleBasedStateMachine):
 
         log.info(f"post: H({address}) = {float(self.health_factor(address))}")
 
-        if self.collateral(address) < LP_constants.Cmin:
+        if self.health_factor(address) < 1:
             log.warning(f"{address} is not collateralized")
             # reverts the transaction
             self.reserves[token] += amount
@@ -262,7 +271,7 @@ class LP(RuleBasedStateMachine):
         log.info(f"post: H({address}) = {float(self.health_factor(address))}")
 
     def interest_rate(self, token):
-        return Fraction(9,1)     # Fraction(12, 100)
+        return Fraction(12, 100)
     
     def accrue_interest(self):
         log.info("accrue_interest")
@@ -312,7 +321,7 @@ class LP(RuleBasedStateMachine):
 
         log.info(f"post: H({address}) = {float(self.health_factor(address))}")
 
-        if self.collateral(address) < LP_constants.Cmin:
+        if self.health_factor(address) < 1:
             log.warning(f"Address {address} is under-collateralized (collateral = {self.collateral(address)}).")
             # reverts the transaction
             self.reserves[token] += amount_rdm
@@ -328,7 +337,7 @@ class LP(RuleBasedStateMachine):
     def liquidate(self, address, amount, token_debt, address_debtor, token_minted):
         log.info(f"{address}: liquidate({amount}:{token_debt}, {address_debtor}, {token_minted})")
 
-        amount_minted = Fraction(amount,self.XR(token_minted)) * Fraction(self.get_price(token_debt), self.get_price(token_minted)) * Fraction(LP_constants.Rliq)
+        amount_minted = Fraction(amount,self.XR(token_minted)) * Fraction(self.get_price(token_debt), self.get_price(token_minted)) * Fraction(self.Rliq)
 
         if amount <= 0:
             log.warning("Liquidate amount must be greater than zero.")
@@ -358,7 +367,7 @@ class LP(RuleBasedStateMachine):
             log.warning("Insufficient minted tokens to redeem.")
             self.lastReverted = True
             return
-        elif self.collateral(address_debtor) >= LP_constants.Cmin:
+        elif self.health_factor(address_debtor) >= 1:
             log.warning("Address {address_debtor} is collateralized.")
             self.lastReverted = True
             return
@@ -377,8 +386,8 @@ class LP(RuleBasedStateMachine):
 
         log.info(f"post: H({address_debtor}) = {float(self.health_factor(address_debtor))}")
 
-        if self.collateral(address_debtor) > LP_constants.Cmin:
-            log.warning(f"Address {address_debtor} is now collateralized.")
+        if self.health_factor(address_debtor) > 1:
+            log.warning(f"Address {address_debtor} has health factor > 1")
 
             # reverts the transaction
             self.reserves[token_debt] -= amount
@@ -427,8 +436,12 @@ def main():
             continue
         
         try:
+            if line.startswith('#'):
+                # Skip comment lines
+                continue
+
             # Example input format: A:deposit(1:T)
-            if ':' in line:
+            elif ':' in line:
                 address, rest = line.split(':', 1)
                 if '(' in rest:
                     method, args = rest.split('(', 1)
@@ -466,7 +479,13 @@ def main():
                         if arg.replace('.','',1).isdigit(): # arg is a number
                             parsed_args.append(Fraction(arg))
                         else:
-                            parsed_args.append(arg.strip())
+                            arg = arg.strip()
+                            try:
+                                # Try to parse as a Fraction (handles both '2/3' and '3.5')
+                                parsed_args.append(Fraction(arg))
+                            except ValueError:
+                            # Fallback to string or other types if not a valid Fraction
+                                parsed_args.append(arg)
                     if hasattr(lp, method):
                         getattr(lp, method)(*parsed_args)
                         lp.pretty_print(precise=is_precise)

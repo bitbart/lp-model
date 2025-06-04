@@ -1,3 +1,6 @@
+set_liq_threshold(2/3)
+set_liq_reward_factor(2.1)
+# alpha=0, beta=12/100
 A:faucet(100:T0)
 B:faucet(50:T1)
 A:deposit(50:T0)

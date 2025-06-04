@@ -78,6 +78,20 @@ class Blockchain:
     
     # Method wrappers for the LP model
 
+    def set_liq_threshold(self, tliq):
+        self.lp.set_liq_threshold(tliq)
+        if self.lp.lastReverted:
+            log.warning("set_liq_threshold failed.")
+            self.lastReverted = True
+            return
+
+    def set_liq_reward_factor(self, rliq):
+        self.lp.set_liq_reward_factor(rliq)
+        if self.lp.lastReverted:
+            log.warning("set_liq_reward_factor failed.")
+            self.lastReverted = True
+            return
+
     def deposit(self, address, amount, token):
         if amount <= 0:
             log.warning("Deposit amount must be greater than zero.")
@@ -228,8 +242,12 @@ def main():
             continue
         
         try:
+            if line.startswith('#'):
+                # Skip comment lines
+                continue
+
             # Example input format: A:deposit(1:T)
-            if ':' in line:
+            elif ':' in line:
                 address, rest = line.split(':', 1)
                 if '(' in rest:
                     method, args = rest.split('(', 1)
@@ -267,7 +285,14 @@ def main():
                         if arg.replace('.','',1).isdigit(): # arg is a number
                             parsed_args.append(Fraction(arg))
                         else:
-                            parsed_args.append(arg.strip())
+                            arg = arg.strip()
+                            try:
+                                # Try to parse as a Fraction (handles both '2/3' and '3.5')
+                                parsed_args.append(Fraction(arg))
+                            except ValueError:
+                            # Fallback to string or other types if not a valid Fraction
+                                parsed_args.append(arg)
+
                     if hasattr(bc, method):
                         getattr(bc, method)(*parsed_args)
                         bc.pretty_print(precise=is_precise)
