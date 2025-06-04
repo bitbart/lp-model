@@ -92,6 +92,13 @@ class Blockchain:
             self.lastReverted = True
             return
 
+    def set_interest_rate(self, alpha, beta):
+        self.lp.set_interest_rate(alpha, beta)
+        if self.lp.lastReverted:
+            log.warning("set_interest_rate failed.")
+            self.lastReverted = True
+            return
+
     def deposit(self, address, amount, token):
         if amount <= 0:
             log.warning("Deposit amount must be greater than zero.")

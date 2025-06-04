@@ -31,9 +31,13 @@ class LP(RuleBasedStateMachine):
         self.minted = {}    # minted map    {token: {address: amount}}
         self.prices = {}    # prices map    {token: price}
         self.lastReverted = False
-        self.Tliq = Fraction(2, 3)  # Tliq = liquidation threshold
-        self.Rliq = Fraction(11,10) # Rliq = liquidation reward factor
-         
+        self.tliq = Fraction(2, 3)  # tliq = liquidation threshold
+        self.rliq = Fraction(11,10) # rliq = liquidation reward factor
+
+        # Interest rate parameters: IR(T) = alpha * U(T) + beta
+        self.ir_alpha = 0
+        self.ir_beta = Fraction(12, 100)  # Default interest rate of 12%
+
     def pretty_print(self, precise=False):
         """
         Pretty-prints the internal state of the LP instance on a single line.
@@ -121,7 +125,7 @@ class LP(RuleBasedStateMachine):
     def health_factor(self, address):
         if self.val_debts(address) == 0:
             return math.inf # No debts to collateralize (+inf)
-        return self.collateral(address) * self.Tliq
+        return self.collateral(address) * self.tliq
 
     def set_liq_threshold(self, tliq):
         log.info(f"set_liq_threshold({tliq})")
@@ -129,7 +133,7 @@ class LP(RuleBasedStateMachine):
             log.warning("Liquidation threshold must be between 0 and 1.")
             self.lastReverted = True
             return
-        self.Tliq = tliq
+        self.tliq = tliq
         self.lastReverted = False
 
     def set_liq_reward_factor(self, rliq):
@@ -138,8 +142,17 @@ class LP(RuleBasedStateMachine):
             log.warning("Liquidation reward factor must be greater than 1.")
             self.lastReverted = True
             return
-        self.rLiq = rliq
+        self.rliq = rliq
         self.lastReverted = False
+
+    def set_interest_rate(self, alpha, beta):
+        log.info(f"set_interest_rate(alpha={alpha},beta={beta})")
+        if alpha < 0 or beta < 0:
+            log.warning("Interest rate parameters must be greater than 0.")
+            self.lastReverted = True
+            return
+        self.ir_alpha = alpha
+        self.ir_beta = beta
 
     def set_price(self, token, price):
         """
@@ -270,12 +283,21 @@ class LP(RuleBasedStateMachine):
 
         log.info(f"post: H({address}) = {float(self.health_factor(address))}")
 
+    def utilization_ratio(self, token):
+        """
+        Calculates the utilization ratio for a given token T.
+        If there are no debts in T, utilization is considered zero.
+        """
+        if token not in self.reserves or self.tok_debts(token) == 0:
+            return Fraction(0)
+        return Fraction(self.tok_debts(token), self.reserves[token] + self.tok_debts(token))
+        
     def interest_rate(self, token):
-        return Fraction(12, 100)
+        return self.ir_alpha * self.utilization_ratio(token) + self.ir_beta
     
     def accrue_interest(self):
-        log.info("accrue_interest")
         for token in self.debts:
+            log.info(f"accrue_interest on {token}: {self.ir_alpha} * {self.utilization_ratio(token)} + {self.ir_beta} = {self.interest_rate(token)}")
             for address in self.debts[token]:
                 self.debts[token][address] += self.debts[token][address] * self.interest_rate(token)
 
@@ -337,7 +359,7 @@ class LP(RuleBasedStateMachine):
     def liquidate(self, address, amount, token_debt, address_debtor, token_minted):
         log.info(f"{address}: liquidate({amount}:{token_debt}, {address_debtor}, {token_minted})")
 
-        amount_minted = Fraction(amount,self.XR(token_minted)) * Fraction(self.get_price(token_debt), self.get_price(token_minted)) * Fraction(self.Rliq)
+        amount_minted = Fraction(amount,self.XR(token_minted)) * Fraction(self.get_price(token_debt), self.get_price(token_minted)) * Fraction(self.rliq)
 
         if amount <= 0:
             log.warning("Liquidate amount must be greater than zero.")

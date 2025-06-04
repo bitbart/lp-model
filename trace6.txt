@@ -1,3 +1,6 @@
+set_liq_threshold(2/3)
+set_liq_reward_factor(1)
+set_interest_rate(0, 9)
 A:faucet(100:T1)
 B:faucet(10:T2)
 C:faucet(100:T2)

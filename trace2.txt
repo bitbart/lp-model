@@ -1,5 +1,8 @@
 set_liq_threshold(2/3)
 set_liq_reward_factor(1.1)
+set_interest_rate(0, 12/100)
+A:faucet(200:T0)
+B:faucet(100:T1)
 A:deposit(100:T0)
 B:deposit(100:T1)
 B:borrow(50:T0)
