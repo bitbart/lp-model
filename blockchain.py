@@ -53,6 +53,14 @@ class Blockchain:
             self.wallets[token] = {}
         self.wallets[token][address] = amount
 
+    def health_factor(self, address):
+        """
+        Returns the health factor of an address
+        """
+        hf = self.lp.health_factor(address)
+        log.info(f"H({address}) = {hf}")
+        return hf
+
     def net_worth(self, address):
         """
         Returns the net worth of an address in terms of all tokens.

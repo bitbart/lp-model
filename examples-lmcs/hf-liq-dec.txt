@@ -1,0 +1,28 @@
+# Example in Section 2.4 of the paper (trace Y decreases B's health factor)
+
+# python blockchain.py examples-lmcs/hf-liq-dec.txt 
+
+# Set the protocol parameters
+set_liq_threshold(2/3)
+set_liq_reward_factor(1.3)
+set_interest_rate(0, 1/2)
+
+# Set the initial user balances
+M:faucet(100:T0)
+B:faucet(100:T0)
+
+# Execution trace
+M:deposit(90:T0)
+B:deposit(50:T0)
+B:borrow(30:T0)
+accrue_interest
+
+# Outputs the health factor of B before the liquidation
+health_factor(B)
+
+M:liquidate(10:T0,B,T0)
+
+# Outputs the health factor of B after the liquidation
+health_factor(B)
+
+M:redeem(101:T0)
