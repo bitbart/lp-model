@@ -299,7 +299,7 @@ s.add((And([
                     Or([tx_user[state] == user for user in Users]) 
                    for state in States[:-1]])))
 
-# v param of tx
+# v param of tx (used also as delta in px)
 tx_v = [Real("tx_v_s%s" % (i)) for i in States[:-1]]
 
 # T param of tx
@@ -317,12 +317,12 @@ s.add((And([
                     Or([tx_liquser[state] == user for user in Users]) 
                    for state in States[:-1]])))
 
-# token type T for credits seized during liq
-tx_liqtok = [Real("tx_liqtok_s%s" % (i)) for i in States[:-1]]
+# 2nd token used in liq and swp
+tx_tok2 = [Real("tx_tok2_s%s" % (i)) for i in States[:-1]]
 
 # tx_liqcr must be in Tokens
 s.add((And([
-                    Or([tx_liqtok[state] == token for token in Tokens]) 
+                    Or([tx_tok2[state] == token for token in Tokens]) 
                    for state in States[:-1]])))
 
 
@@ -337,7 +337,7 @@ transition_variables = [
     'tx_tok':tx_tok[state],
     'tx_tok':tx_tok[state],
     'tx_liquser':tx_liquser[state],
-    'tx_liqtok':tx_liqtok[state],
+    'tx_tok2':tx_tok2[state],
     'revert':revert[state],
     }
     for state in States[:-1]
@@ -543,12 +543,12 @@ def repay(
 def liquidate(
         i,
         w, r, c, d, C, D, p, X, Health, I,
-        tx_user, tx_v, tx_tok, tx_liquser, tx_liqtok, revert
+        tx_user, tx_v, tx_tok, tx_liquser, tx_tok2, revert
     ):
     #vc1 = (tx_v[i] / X[i][tok_liqed] * p[i][tok] / p[i][tok_liqed] * Rliq) 
     conditions = And(
         And([Implies(
-            And(tok == tx_tok[i], tok_liqed == tx_liqtok[i], user == tx_user[i], user_liqed==tx_liquser[i]),
+            And(tok == tx_tok[i], tok_liqed == tx_tok2[i], user == tx_user[i], user_liqed==tx_liquser[i]),
             And( 
                 w[i][tok][user] >= tx_v[i],
                 d[i][tok][user_liqed] >= tx_v[i],
@@ -567,7 +567,7 @@ def liquidate(
         revert[i],
         same_state(i, w, r, c, d, p),
         And(
-            And([If(And(tok == tx_tok[i], tok == tx_liqtok[i]), # tok = T0 = T1
+            And([If(And(tok == tx_tok[i], tok_liqed == tx_tok2[i], tok == tok_liqed), # tok = T0 = T1
                     And(
                         p[i+1][tok] == p[i][tok],
                         r[i+1][tok] == r[i][tok] + tx_v[i], 
@@ -589,8 +589,8 @@ def liquidate(
                                 d[i+1][tok][user] ==  d[i][tok][user], 
                             )
                             )) for user in Users])),
-                    If(tok == tx_tok[i],    # tok = T0 
-                       And(
+                    If(And(tok == tx_tok[i], tok_liqed == tx_tok2[i]),    
+                       And(                         # T0 
                         p[i+1][tok] == p[i][tok],
                         r[i+1][tok] == r[i][tok] + tx_v[i], 
                         And([If( user == tx_user[i],    # user == A
@@ -610,21 +610,73 @@ def liquidate(
                                 c[i+1][tok][user] ==  c[i][tok][user], 
                                 d[i+1][tok][user] ==  d[i][tok][user], 
                             )
-                            )) for user in Users])),
-                       If(tok == tx_liqtok[i],  # tok = T1
-                          And(
-                        p[i+1][tok] == p[i][tok],
-                        r[i+1][tok] == r[i][tok], 
+                            )) for user in Users]),
+                          And(          #  T1
+                        p[i+1][tok_liqed] == p[i][tok_liqed],
+                        r[i+1][tok_liqed] == r[i][tok_liqed], 
                         And([If( user == tx_user[i],    # user == A
                             And(
-                                w[i+1][tok][user] ==  w[i][tok][user], 
-                                c[i+1][tok][user] ==  c[i][tok][user] + (tx_v[i] / X[i][tok] * p[i][tok] / p[i][tok] * Rliq), 
-                                d[i+1][tok][user] ==  d[i][tok][user], 
+                                w[i+1][tok_liqed][user] ==  w[i][tok_liqed][user], 
+                                c[i+1][tok_liqed][user] ==  c[i][tok_liqed][user] + (tx_v[i] / X[i][tok] * p[i][tok] / p[i][tok_liqed] * Rliq), 
+                                d[i+1][tok_liqed][user] ==  d[i][tok_liqed][user], 
                             ),
                             If( user == tx_liquser[i], # user == B
                                 And(
-                                    w[i+1][tok][user] ==  w[i][tok][user], 
-                                    c[i+1][tok][user] ==  c[i][tok][user] - (tx_v[i] / X[i][tok] * p[i][tok] / p[i][tok] * Rliq), 
+                                    w[i+1][tok_liqed][user] ==  w[i][tok_liqed][user], 
+                                    c[i+1][tok_liqed][user] ==  c[i][tok_liqed][user] - (tx_v[i] / X[i][tok] * p[i][tok] / p[i][tok_liqed] * Rliq), 
+                                    d[i+1][tok_liqed][user] ==  d[i][tok_liqed][user], 
+                                ),
+                            And(
+                                w[i+1][tok_liqed][user] ==  w[i][tok_liqed][user], 
+                                c[i+1][tok_liqed][user] ==  c[i][tok_liqed][user], 
+                                d[i+1][tok_liqed][user] ==  d[i][tok_liqed][user], 
+                            )
+                            )) for user in Users])), 
+                       ),                      
+                    If(And(tok != tx_tok[i], tok_liqed != tx_tok2[i]),  # != T0, != T1
+                    same_state_tok(i, w, r, c, d, p, tok),
+                    True
+                    )
+                    ))
+                for tok in Tokens for tok_liqed in Tokens]),
+        )
+    ))
+
+
+
+
+def swap(
+        i,
+        w, r, c, d, C, D, p, X, Health, I,
+        tx_user, tx_v, tx_tok, tx_tok2, revert
+    ):  
+    conditions = And(
+        And([Implies(
+            And(tok == tx_tok[i], tok2 == tx_tok2[i], user == tx_user[i]),
+            And( 
+                tok != tok2,
+                w[i][tok][user] >= tx_v[i],
+            ), 
+        ) 
+        for tok in Tokens for tok2 in Tokens for user in Users]),
+        tx_v[i] > 0
+    )
+    return And(
+        revert[i] == Not(conditions),
+        If(
+        revert[i],
+        same_state(i, w, r, c, d, p),
+        And(
+            And([
+                    If(And(tok == tx_tok[i], tok2 == tx_tok2[i]),    
+                       And(                         # T0 
+                        p[i+1][tok] == p[i][tok],
+                        r[i+1][tok] == r[i][tok], 
+                        And([
+                            If( user == tx_user[i], 
+                                And(
+                                    w[i+1][tok][user] ==  w[i][tok][user] - tx_v[i], 
+                                    c[i+1][tok][user] ==  c[i][tok][user], 
                                     d[i+1][tok][user] ==  d[i][tok][user], 
                                 ),
                             And(
@@ -632,15 +684,94 @@ def liquidate(
                                 c[i+1][tok][user] ==  c[i][tok][user], 
                                 d[i+1][tok][user] ==  d[i][tok][user], 
                             )
-                            )) for user in Users])),                       
-                    same_state_tok(i, w, r, c, d, p, tok)
-                    )))
-                for tok in Tokens]),
+                            ) for user in Users]),
+                          And(          #  T1
+                        p[i+1][tok2] == p[i][tok2],
+                        r[i+1][tok2] == r[i][tok2], 
+                        And([
+                            If( user == tx_user[i], 
+                                And(
+                                    w[i+1][tok2][user] ==  w[i][tok2][user] +  tx_v[i]*p[i][tok]/p[i][tok2] , 
+                                    c[i+1][tok2][user] ==  c[i][tok2][user], 
+                                    d[i+1][tok2][user] ==  d[i][tok2][user], 
+                                ),
+                            And(
+                                w[i+1][tok2][user] ==  w[i][tok2][user], 
+                                c[i+1][tok2][user] ==  c[i][tok2][user], 
+                                d[i+1][tok2][user] ==  d[i][tok2][user], 
+                            )
+                            ) for user in Users])), 
+                       ),                      
+                    If(And(tok != tx_tok[i], tok2 != tx_tok2[i]),  # != T0, != T1
+                    same_state_tok(i, w, r, c, d, p, tok),
+                    True
+                    )
+                    )
+                for tok in Tokens for tok2 in Tokens]),
         )
     ))
 
 
-#            And(flatten([p[i+1][token] == p[i][token] for token in Tokens]))
+def priceupdate(
+        i,
+        w, r, c, d, C, D, p, X, Health, I,
+        tx_v, tx_tok, revert
+    ):
+    conditions = And(
+        And([Implies(
+            And(tok == tx_tok[i]), 
+            tx_v[i] != 0,
+            p[i][tok] + tx_v[i] > 0
+        ) 
+        for tok in Tokens]),
+    )
+    return And(
+        revert[i] == Not(conditions),
+        If(
+        revert[i],
+        same_state(i, w, r, c, d, p),
+        And(
+            And([If(tok == tx_tok[i], 
+                    And(
+                        p[i+1][tok] == p[i][tok] +  tx_v[i],
+                        r[i+1][tok] == r[i][tok], 
+                        And([
+                            And(
+                                w[i+1][tok][user] ==  w[i][tok][user], 
+                                c[i+1][tok][user] ==  c[i][tok][user], 
+                                d[i+1][tok][user] ==  d[i][tok][user], 
+                            ) for user in Users])),
+                    same_state_tok(i, w, r, c, d, p, tok)
+                    )
+                for tok in Tokens ]),
+        )
+    ))
+
+
+def intaccrual(
+        i,
+        w, r, c, d, C, D, p, X, Health, I,
+        revert
+    ):
+    conditions = True
+    return And(
+        revert[i] == Not(conditions),
+        If(
+        revert[i],
+        same_state(i, w, r, c, d, p),
+        And([
+            And(
+            p[i+1][tok] == p[i][tok],
+            r[i+1][tok] == r[i][tok], 
+            w[i+1][tok][user] ==  w[i][tok][user], 
+            c[i+1][tok][user] ==  c[i][tok][user], 
+            d[i+1][tok][user] ==  d[i][tok][user] + d[i][tok][user]*I[i][tok]) 
+            for user in Users for tok in Tokens
+        ]
+        )
+    ))
+
+
 
 for i in States[:-1]:
     print(i)
@@ -669,7 +800,22 @@ for i in States[:-1]:
             liquidate(
             i,
             w, r, c, d, C, D, p, X, Health, I,
-            tx_user, tx_v, tx_tok, tx_liquser, tx_liqtok, revert)),
+            tx_user, tx_v, tx_tok, tx_liquser, tx_tok2, revert)),
+        And(action[i] == Action.swp , 
+            swap(
+            i,
+            w, r, c, d, C, D, p, X, Health, I,
+            tx_user, tx_v, tx_tok, tx_tok2, revert)),
+        And(action[i] == Action.px , 
+            priceupdate(
+            i,
+            w, r, c, d, C, D, p, X, Health, I,
+            tx_v, tx_tok, revert)),
+        And(action[i] == Action.int , 
+            intaccrual(
+            i,
+            w, r, c, d, C, D, p, X, Health, I,
+            revert)),
         ),
     s.add(next_state)
 
