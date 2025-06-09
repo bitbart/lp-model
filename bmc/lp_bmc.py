@@ -294,17 +294,28 @@ action = [Const("action_s%s" % (i), Action) for i in States]
 # sender of tx
 tx_user = [Real("tx_user_s%s" % (i)) for i in States[:-1]]
 
+# sender must be in Users
+s.add((And([
+                    Or([tx_user[state] == user for user in Users]) 
+                   for state in States[:-1]])))
+
 # v param of tx
 tx_v = [Real("tx_v_s%s" % (i)) for i in States[:-1]]
 
 # T param of tx
 tx_tok = [Real("tx_tok_s%s" % (i)) for i in States[:-1]]
 
+# tok must be in Tokens
+s.add((And([
+                    Or([tx_tok[state] == token for token in Tokens]) 
+                   for state in States[:-1]])))
+
 # True iff transaction is not enabled
 revert = [Bool("revert_s%s" % (i)) for i in States[:-1]]
 
 transition_variables = [
     {
+    'action':action[state],
     'tx_user':tx_user[state],
     'tx_v':tx_v[state],
     'tx_tok':tx_tok[state],
@@ -314,27 +325,24 @@ transition_variables = [
 ]
 
 
-def same_state(i, w, r, c, d, p):
+def same_state_tok(i, w, r, c, d, p, tok):
     return And(
-        And(flatten([[
-            w[i+1][token][user] == w[i][token][user] 
-            for user in Users]
-            for token in Tokens])),
-        And(flatten([[
-            c[i+1][token][user] == c[i][token][user] 
-            for user in Users]
-            for token in Tokens])),
-        And(flatten([[
-            d[i+1][token][user] == d[i][token][user] 
-            for user in Users]
-            for token in Tokens])),
-        And(flatten([
-            r[i+1][token] == r[i][token] 
-            for token in Tokens])),
-        And(flatten([
-            p[i+1][token] == p[i][token] 
-            for token in Tokens]))
+        And([
+            w[i+1][tok][user] == w[i][tok][user] 
+            for user in Users]),
+        And([
+            c[i+1][tok][user] == c[i][tok][user] 
+            for user in Users]),
+        And([
+            d[i+1][tok][user] == d[i][tok][user] 
+            for user in Users]),
+        r[i+1][tok] == r[i][tok],
+        p[i+1][tok] == p[i][tok] 
     )
+
+def same_state(i, w, r, c, d, p):
+    return And([same_state_tok(i, w, r, c, d, p, token) for token in Tokens])
+
 
 def deposit(
         i,
@@ -359,7 +367,7 @@ def deposit(
             And([If(tok == tx_tok[i], 
                     And(
                         p[i+1][tok] == p[i][tok],
-                        r[i+1][tok] ==  r[i][tok] + tx_v[i], 
+                        r[i+1][tok] == r[i][tok] + tx_v[i], 
                         And([If( user == tx_user[i],
                             And(
                                 w[i+1][tok][user] ==  w[i][tok][user] - tx_v[i], 
@@ -371,30 +379,75 @@ def deposit(
                                 c[i+1][tok][user] ==  c[i][tok][user], 
                                 d[i+1][tok][user] ==  d[i][tok][user], 
                             )) for user in Users])),
-                    And(
-                        p[i+1][tok] == p[i][tok],
-                        r[i+1][tok] ==  r[i][tok], 
-                        And([And(
-                                w[i+1][tok][user] ==  w[i][tok][user], 
-                                c[i+1][tok][user] ==  c[i][tok][user], 
-                                d[i+1][tok][user] ==  d[i][tok][user], 
-                            )
-                            for user in Users])
-                    )
+                    same_state_tok(i, w, r, c, d, p, tok)
                     )
                 for tok in Tokens ]),
         )
     ))
 
+
+
+def repay(
+        i,
+        w, r, c, d, C, D, p, X, Health, I,
+        tx_user, tx_v, tx_tok, revert
+    ):
+    conditions = And(
+        And([Implies(
+            And(tok == tx_tok[i], user == tx_user[i]), 
+            And(
+                w[i][tok][user] >= tx_v[i],
+                d[i][tok][user] >= tx_v[i],    
+                ), 
+        ) 
+        for tok in Tokens for user in Users]),
+        tx_v[i] > 0
+    )
+    #conditions = False
+    return And(
+        revert[i] == Not(conditions),
+        If(
+        revert[i],
+        same_state(i, w, r, c, d, p),
+        And(
+            And([If(tok == tx_tok[i], 
+                    And(
+                        p[i+1][tok] == p[i][tok],
+                        r[i+1][tok] == r[i][tok] + tx_v[i], 
+                        And([If( user == tx_user[i],
+                            And(
+                                w[i+1][tok][user] ==  w[i][tok][user] - tx_v[i], 
+                                c[i+1][tok][user] ==  c[i][tok][user], 
+                                d[i+1][tok][user] ==  d[i][tok][user] - tx_v[i], 
+                            ),
+                            And(
+                                w[i+1][tok][user] ==  w[i][tok][user], 
+                                c[i+1][tok][user] ==  c[i][tok][user], 
+                                d[i+1][tok][user] ==  d[i][tok][user], 
+                            )) for user in Users])),
+                    same_state_tok(i, w, r, c, d, p, tok)
+                    )
+                for tok in Tokens ]),
+        )
+    ))
+
+
 #            And(flatten([p[i+1][token] == p[i][token] for token in Tokens]))
 
 for i in States[:-1]:
     print(i)
-    next_state = And(action[i] == Action.dep , 
+    next_state = Or(
+        And(action[i] == Action.dep , 
             deposit(
             i,
             w, r, c, d, C, D, p, X, Health, I,
-            tx_user, tx_v, tx_tok, revert ))
+            tx_user, tx_v, tx_tok, revert)),
+        And(action[i] == Action.rep , 
+            repay(
+            i,
+            w, r, c, d, C, D, p, X, Health, I,
+            tx_user, tx_v, tx_tok, revert)),
+        )
     s.add(next_state)
 
 
@@ -402,82 +455,34 @@ for i in States[:-1]:
 #for ass in s.assertions():
 #    pprint.pprint(ass)
 
-s.check(c[1][1][1]==2)
+
+regr_test = 1
+
+if regr_test==1:    # dep
+    s.check(And(
+        c[3][1][1]==2,
+        W[0][1]==2,
+        W[0][2]==0,
+        W[0][0]==0,
+        ))
+elif regr_test==2:  # dep
+    s.check(c[3][1][1]==2)
+elif regr_test==3:
+    s.check(d[3][1][1]==2)
+elif regr_test==4:
+    s.check(And(
+        c[3][1][1]==2,
+        d[3][1][1]==2
+                ))
+
 
 m=s.model()
 print(m)
 
-def print_model(m):
-    m_d = {d: m[d] for d in m}
-    for i in States:
-        m_d_i = {}
-        for key in m_d:
-            if f"s{i}" in str(key):
-                m_d_i[str(key)] = m_d[key]
-        print("\n\n")
-        pprint.pprint(m_d_i,sort_dicts=True)
 
-
-def print_model2(m, state_variables, transition_variables):
-    m_d = {d: m[d] for d in m}
-    state_vars = list(state_variables.keys())
-    trans_vars = list(transition_variables.keys())
-    for v in state_vars+trans_vars:
-        m_d_v = {}
-        l_v = []
-        for key in m_d:
-            if f"{v}_" in str(key):
-                m_d_v[str(key)] = m_d[key]
-                l_v.append(m_d[key])
-        #pprint.pprint(m_d_v,sort_dicts=True)
-        print(str(v),'\t', '\t'.join([str(el) for el in l_v]))
-
-
-def print_model3(m, state_variables, transition_variables):
-    dont_print = ['Coll', 'Health', 'W','Ww', 'Wc', 'Wd', 'C', 'D']
-    print(f"Tliq: {m[Tliq]}")
-    print(f"Rliq: {m[Rliq]}")
-    if USE_LIN_UTILIZATION_INT_RATE:
-        print(f"alfa: {m[alfa]}")
-        print(f"beta: {m[beta]}")
-    m_d = {d: m[d] for d in m}
-    state_vars = list(state_variables.keys())
-    trans_vars = list(transition_variables.keys())
-    for v in trans_vars + state_vars:
-        if v in dont_print:
-            continue
-        print("\n",v[:6], end="\t")
-        m_d_v = {}
-        l_v = []
-        for key in m_d:
-            if str(key).startswith(f"{v}_"):
-            #if f"{v}_" in str(key):
-                m_d_v[str(key)] = m_d[key]
-                l_v.append((m_d[key]))
-        keys = list(m_d_v.keys())
-        keys.sort()
-        first_key = str(list(m_d_v.keys())[0])
-        #print(f"{first_key=}")
-        if "_t" not in first_key and "_u" in first_key and not v in trans_vars:  # var only depends on user
-            #print("var only depends on user")
-            for user in Users:
-                print(f'U{user}\t\t','\t'.join([str(m_d_v[el]) for el in keys if f"_u{user}" in str(el)]), end="\n\t")
-        elif "_t" in first_key and "_u" not in first_key and not v in trans_vars :  # var only depends on token
-            #print("var only depends on token")
-            for token in Tokens:
-                print(f'T{token}\t\t','\t'.join([str(m_d_v[el]) for el in keys if f"_t{token}" in str(el)]), end="\n\t")
-        elif "_t" in first_key and "_u" in first_key  and not v in trans_vars:  # var depends on both token and user
-            #print("var depends on both users and tokens")
-            for token in Tokens:
-                print(f'T{token}', end="")
-                for user in Users:
-                    print(f'\tU{user}\t','\t'.join([str(m_d_v[el]) for el in keys if f"_t{token}_u{user}" in str(el)]), end="\n\t")
-        else:   
-            print(f'\t\t','\t'.join([str(m_d_v[el]) for el in m_d_v.keys()]), end="\n\t")
-                
-
-def print_model4(m, state_variables, transition_variables):
-    dont_print = ['Coll', 'Health', 'W','Ww', 'Wc', 'Wd', 'C', 'D']
+def print_model(m, state_variables, transition_variables):
+    dont_print = []
+    #dont_print = ['Coll', 'Health', 'W','Ww', 'Wc', 'Wd', 'C', 'D']
     print(f"Tliq: {m[Tliq]}")
     print(f"Rliq: {m[Rliq]}")
     if USE_LIN_UTILIZATION_INT_RATE:
@@ -520,4 +525,4 @@ def print_model4(m, state_variables, transition_variables):
             #print(f'\t\t','\t'.join([str(m_d_v[el]) for el in m_d_v.keys()]), end="\n\t")
                 
 #print_model(m)
-print_model4(m,state_variables[0], transition_variables[0])
+print_model(m,state_variables[0], transition_variables[0])
