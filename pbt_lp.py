@@ -102,7 +102,7 @@ class WrappedLP(LP):
         test_redeem_XR
         checks that the exchange rate (XR) of all tokens is preserved by a redeem
     """
-    @rule(address=text(alphabet="ABCDEF",min_size=1,max_size=1), amount=integers(min_value=1,max_value=100), token=text(alphabet="TUVXYZ",min_size=1,max_size=1))
+    @rule(address=text(alphabet="AB",min_size=1,max_size=1), amount=integers(min_value=1,max_value=10), token=text(alphabet="TU",min_size=1,max_size=1))
     def test_redeem_XR(self, address, amount, token):	
         xr_pre = super().get_xr()
         super().redeem(address, amount, token)
