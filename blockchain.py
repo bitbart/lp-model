@@ -294,7 +294,7 @@ def main():
                     for arg in args.split(','):
                         if ':' in arg:  # For example, "1:T"
                             amount, token = arg.split(':')
-                            parsed_args.extend([int(amount), token])
+                            parsed_args.extend([Fraction(amount), token])
                         else:
                             parsed_args.append(arg.strip())
 
