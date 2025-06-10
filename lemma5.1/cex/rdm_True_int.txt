@@ -1,0 +1,21 @@
+
+
+
+set_liq_threshold(9/10)
+set_liq_reward_factor(11/10)
+set_interest_rate(1, 1)
+
+
+
+A:faucet(3.6:T0)
+B:faucet(1.4:T0)
+B:faucet(1.5:T1)
+
+A:deposit(2:T0)
+B:deposit(1.5:T1)
+
+A:borrow(0.4:T0)
+B:borrow(0.6:T0)
+
+accrue_interest
+net_worth(A)
