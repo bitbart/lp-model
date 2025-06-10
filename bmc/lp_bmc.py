@@ -35,19 +35,19 @@ def print_model(m, i, state_variables, transition_variables):
         if "_t" not in first_key and "_u" in first_key and not v in trans_vars:  # var only depends on user
             #print("var only depends on user")
             for user in Users:
-                print(f'U{user}\t\t','\t'.join([str(m_d[f"{v}_s{state}_u{user}"]) for state in States[:i+1]]), end="\n\t")
+                print(f'U{user}\t\t','\t'.join([str(m_d[f"{v}_s{state}_u{user}"]) for state in States[:i]]), end="\n\t")
         elif "_t" in first_key and "_u" not in first_key and not v in trans_vars :  # var only depends on token
             #print("var only depends on token")
             for token in Tokens:
-                print(f'T{token}\t\t','\t'.join([str(m_d[f"{v}_s{state}_t{token}"]) for state in States[:i+1]]), end="\n\t")
+                print(f'T{token}\t\t','\t'.join([str(m_d[f"{v}_s{state}_t{token}"]) for state in States[:i]]), end="\n\t")
         elif "_t" in first_key and "_u" in first_key  and not v in trans_vars:  # var depends on both token and user
             #print("var depends on both users and tokens")
             for token in Tokens:
                 print(f'T{token}', end="")
                 for user in Users:
-                    print(f'\tU{user}\t','\t'.join([str(m_d[f"{v}_s{state}_t{token}_u{user}"]) for state in States[:i+1]]), end="\n\t")
+                    print(f'\tU{user}\t','\t'.join([str(m_d[f"{v}_s{state}_t{token}_u{user}"]) for state in States[:i]]), end="\n\t")
         else:   
-            print(f'\t\t','\t'.join([str(m_d[f"{v}_s{state}"]) for state in States[:i]]), end="\n\t")
+            print(f'\t\t','\t'.join([str(m_d[f"{v}_s{state}"]) for state in States[:i-1]]), end="\n\t")
             #print(f'\t\t','\t'.join([str(m_d_v[el]) for el in m_d_v.keys()]), end="\n\t")
                 
 
@@ -79,7 +79,7 @@ def printModel(m):
 s = Solver()
 
 
-Max_Steps = 4
+Max_Steps = 9
 States = range(Max_Steps)
 
 # number of users
@@ -94,6 +94,7 @@ Tokens = range(nTokens)
 # Liquidation threshold
 Tliq = Real('TLiq')
 s.add(Tliq > 0)
+s.add(Tliq <= 1)
 
 # Reward factor
 Rliq = Real('RLiq')
@@ -367,23 +368,28 @@ transition_variables = [
 ]
 
 
-def same_state_tok(i, w, r, c, d, p, tok):
+def same_state_tok(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next,
+                   tok):
     return And(
         And([
-            w[i+1][tok][user] == w[i][tok][user] 
+            w_next[tok][user] == w_now[tok][user] 
             for user in Users]),
         And([
-            c[i+1][tok][user] == c[i][tok][user] 
+            c_next[tok][user] == c_now[tok][user] 
             for user in Users]),
         And([
-            d[i+1][tok][user] == d[i][tok][user] 
+            d_next[tok][user] == d_now[tok][user] 
             for user in Users]),
-        r[i+1][tok] == r[i][tok],
-        p[i+1][tok] == p[i][tok] 
+        r_next[tok] == r_now[tok],
+        p_next[tok] == p_now[tok] 
     )
 
-def same_state(i, w, r, c, d, p):
-    return And([same_state_tok(i, w, r, c, d, p, token) for token in Tokens])
+def same_state(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next):
+    return And([same_state_tok(w_now, r_now, c_now, d_now, p_now,
+                     w_next, r_next, c_next, d_next, p_next,
+                     token) for token in Tokens])
 
 
 def deposit(
@@ -403,7 +409,8 @@ def deposit(
         revert_now == Not(conditions),
         If(
         revert_now,
-        same_state(i, w, r, c, d, p),
+        same_state(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next),
         And(
             And([If(tok == tx_tok_now, 
                     And(
@@ -420,7 +427,9 @@ def deposit(
                                 c_next[tok][user] ==  c_now[tok][user], 
                                 d_next[tok][user] ==  d_now[tok][user], 
                             )) for user in Users])),
-                    same_state_tok(i, w, r, c, d, p, tok)
+                    same_state_tok(w_now, r_now, c_now, d_now, p_now,
+                     w_next, r_next, c_next, d_next, p_next,
+                     tok)
                     )
                 for tok in Tokens ]),
         )
@@ -448,7 +457,8 @@ def redeem(
         revert_now == Not(conditions),
         If(
         revert_now,
-        same_state(i, w, r, c, d, p),
+        same_state(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next),
         And(
             And([If(tok == tx_tok_now, 
                     And(
@@ -465,7 +475,9 @@ def redeem(
                                 c_next[tok][user] ==  c_now[tok][user], 
                                 d_next[tok][user] ==  d_now[tok][user], 
                             )) for user in Users])),
-                    same_state_tok(i, w, r, c, d, p, tok)
+                    same_state_tok(w_now, r_now, c_now, d_now, p_now,
+                     w_next, r_next, c_next, d_next, p_next,
+                     tok)
                     )
                 for tok in Tokens ]),
         )
@@ -492,7 +504,8 @@ def borrow(
         revert_now == Not(conditions),
         If(
         revert_now,
-        same_state(i, w, r, c, d, p),
+        same_state(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next),
         And(
             And([If(tok == tx_tok_now, 
                     And(
@@ -509,7 +522,9 @@ def borrow(
                                 c_next[tok][user] ==  c_now[tok][user], 
                                 d_next[tok][user] ==  d_now[tok][user], 
                             )) for user in Users])),
-                    same_state_tok(i, w, r, c, d, p, tok)
+                    same_state_tok(w_now, r_now, c_now, d_now, p_now,
+                     w_next, r_next, c_next, d_next, p_next,
+                     tok)
                     )
                 for tok in Tokens ]),
         )
@@ -537,7 +552,8 @@ def repay(
         revert_now == Not(conditions),
         If(
         revert_now,
-        same_state(i, w, r, c, d, p),
+        same_state(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next),
         And(
             And([If(tok == tx_tok_now, 
                     And(
@@ -554,7 +570,9 @@ def repay(
                                 c_next[tok][user] ==  c_now[tok][user], 
                                 d_next[tok][user] ==  d_now[tok][user], 
                             )) for user in Users])),
-                    same_state_tok(i, w, r, c, d, p, tok)
+                    same_state_tok(w_now, r_now, c_now, d_now, p_now,
+                     w_next, r_next, c_next, d_next, p_next,
+                     tok)
                     )
                 for tok in Tokens ]),
         )
@@ -587,7 +605,8 @@ def liquidate(
         revert_now == Not(conditions),
         If(
         revert_now,
-        same_state(i, w, r, c, d, p),
+        same_state(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next),
         And(
             And([If(And(tok == tx_tok_now, tok_liqed == tx_tok2_now, tok == tok_liqed), # tok = T0 = T1
                     And(
@@ -656,7 +675,9 @@ def liquidate(
                             )) for user in Users])), 
                        ),                      
                     If(And(tok != tx_tok_now, tok_liqed != tx_tok2_now),  # != T0, != T1
-                    same_state_tok(i, w, r, c, d, p, tok),
+                    same_state_tok(w_now, r_now, c_now, d_now, p_now,
+                     w_next, r_next, c_next, d_next, p_next,
+                     tok),
                     True
                     )
                     ))
@@ -687,7 +708,8 @@ def swap(
         revert_now == Not(conditions),
         If(
         revert_now,
-        same_state(i, w, r, c, d, p),
+        same_state(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next),
         And(
             And([
                     If(And(tok == tx_tok_now, tok2 == tx_tok2_now),    
@@ -725,7 +747,9 @@ def swap(
                             ) for user in Users])), 
                        ),                      
                     If(And(tok != tx_tok_now, tok2 != tx_tok2_now),  # != T0, != T1
-                    same_state_tok(i, w, r, c, d, p, tok),
+                    same_state_tok(w_now, r_now, c_now, d_now, p_now,
+                     w_next, r_next, c_next, d_next, p_next,
+                     tok),
                     True
                     )
                     )
@@ -751,7 +775,8 @@ def priceupdate(
         revert_now == Not(conditions),
         If(
         revert_now,
-        same_state(i, w, r, c, d, p),
+        same_state(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next),
         And(
             And([If(tok == tx_tok_now, 
                     And(
@@ -763,7 +788,9 @@ def priceupdate(
                                 c_next[tok][user] ==  c_now[tok][user], 
                                 d_next[tok][user] ==  d_now[tok][user], 
                             ) for user in Users])),
-                    same_state_tok(i, w, r, c, d, p, tok)
+                    same_state_tok(w_now, r_now, c_now, d_now, p_now,
+                     w_next, r_next, c_next, d_next, p_next,
+                     tok)
                     )
                 for tok in Tokens ]),
         )
@@ -780,7 +807,8 @@ def intaccrual(
         revert_now == Not(conditions),
         If(
         revert_now,
-        same_state(i, w, r, c, d, p),
+        same_state(w_now, r_now, c_now, d_now, p_now,
+                   w_next, r_next, c_next, d_next, p_next),
         And([
             And(
             p_next[tok] == p_now[tok],
@@ -850,9 +878,10 @@ Health_nx2 = [Real("Health_nx2_u%s" % (user)) for user in Users]
 I_nx2 = [Real("I_nx2_t%s" % (token)) for token in Tokens]
 U_nx2 = [Real("U_nx2_t%s" % (token)) for token in Tokens]
 
-action_nx1, tx_user_nx1, tx_v_nx1, tx_tok_nx1, tx_liquser_nx1, tx_tok2_nx1, revert_nx1 = Reals('action_nx1 tx_user_nx1 tx_v_nx1 tx_tok_nx1 tx_liquser_nx1 tx_tok2_nx1 revert_nx1')
-action_nx11, tx_user_nx11, tx_v_nx11, tx_tok_nx11, tx_liquser_nx11, tx_tok2_nx11, revert_nx11 = Reals('action_nx11 tx_user_nx11 tx_v_nx11 tx_tok_nx11 tx_liquser_nx11 tx_tok2_nx11 revert_nx11')
-action_nx2, tx_user_nx2, tx_v_nx2, tx_tok_nx2, tx_liquser_nx2, tx_tok2_nx2, revert_nx2 = Reals('action_nx2 tx_user_nx2 tx_v_nx2 tx_tok_nx2 tx_liquser_nx2 tx_tok2_nx2 revert_nx2')
+action_nx1, tx_user_nx1, tx_v_nx1, tx_tok_nx1, tx_liquser_nx1, tx_tok2_nx1 = Reals('action_nx1 tx_user_nx1 tx_v_nx1 tx_tok_nx1 tx_liquser_nx1 tx_tok2_nx1')
+action_nx11, tx_user_nx11, tx_v_nx11, tx_tok_nx11, tx_liquser_nx11, tx_tok2_nx11 = Reals('action_nx11 tx_user_nx11 tx_v_nx11 tx_tok_nx11 tx_liquser_nx11 tx_tok2_nx11')
+action_nx2, tx_user_nx2, tx_v_nx2, tx_tok_nx2, tx_liquser_nx2, tx_tok2_nx2 = Reals('action_nx2 tx_user_nx2 tx_v_nx2 tx_tok_nx2 tx_liquser_nx2 tx_tok2_nx2')
+revert_nx1, revert_nx11, revert_nx2 = Reals('revert_nx1 revert_nx11 revert_nx2')
 
 s.add(state_conditions(w_nx1, r_nx1, c_nx1, d_nx1, C_nx1, D_nx1, p_nx1, X_nx1, Ww_nx1, Wc_nx1, Wd_nx1, W_nx1, Coll_nx1, Health_nx1, I_nx1, U_nx1))
 s.add(state_conditions(w_nx11, r_nx11, c_nx11, d_nx11, C_nx11, D_nx11, p_nx11, X_nx11, Ww_nx11, Wc_nx11, Wd_nx11, W_nx11, Coll_nx11, Health_nx11, I_nx11, U_nx11))
@@ -940,8 +969,8 @@ for i in States[:-1]:
     print(i)
     s.add(state_conditions(*[var[i] for var in list_state_variables]))
     s.add(state_conditions(*[var[i+1] for var in list_state_variables]))
-    #s.add(And(action[i] != Action.int, action[i] != Action.px, action[i] != Action.liq,  action[i] != Action.swp))
-    s.add(And(action[i] != Action.px, action[i] != Action.liq,  action[i] != Action.swp))
+    s.add(And(action[i] != Action.int, action[i] != Action.px, action[i] != Action.liq,  action[i] != Action.swp))
+    #s.add(And(action[i] != Action.px, action[i] != Action.liq,  action[i] != Action.swp))
 
     next_state = step_trans([var[i] for var in list_state_variables], 
                     [var[i+1] for var in list_state_variables], 
@@ -957,16 +986,21 @@ for i in States[:-1]:
 
     #prop = (action[i]== Action.dep, W[i+1][1] != W[i][1])
 
-
+    """
     prop =  And(
-            alfa == 0,
+            #alfa == 0,
             state_conditions(w_nx1, r_nx1, c_nx1, d_nx1, C_nx1, D_nx1, p_nx1, X_nx1, Ww_nx1, Wc_nx1, Wd_nx1, W_nx1, Coll_nx1, Health_nx1, I_nx1, U_nx1),
             state_conditions(w_nx11, r_nx11, c_nx11, d_nx11, C_nx11, D_nx11, p_nx11, X_nx11, Ww_nx11, Wc_nx11, Wd_nx11, W_nx11, Coll_nx11, Health_nx11, 
             I_nx11, U_nx11),
             state_conditions(w_nx2, r_nx2, c_nx2, d_nx2, C_nx2, D_nx2, p_nx2, X_nx2, Ww_nx2, Wc_nx2, Wd_nx2, W_nx2, Coll_nx2, Health_nx2, I_nx2, U_nx2),
             action_nx1 == Action.dep,
-            #W_nx1[1] ==-1,
-            W_nx1[1] != W[i][1],
+            c[i][0][0] > 0,
+            #W_nx1[1] == -1,
+            #Wd_nx1[1] == -1,
+            #Wc_nx1[1] == -1,
+            #Wc[1] == -1,
+            #Ww_nx1[1] == 0,
+            #W_nx1[1] != W[i][1],
             action_nx11 == Action.int,
             action_nx2 == Action.int,
             step_trans([var[i] for var in list_state_variables], 
@@ -978,17 +1012,40 @@ for i in States[:-1]:
             step_trans([var[i] for var in list_state_variables],
                 [w_nx2, r_nx2, c_nx2, d_nx2, C_nx2, D_nx2, p_nx2, X_nx2, Ww_nx2, Wc_nx2, Wd_nx2, W_nx2, Coll_nx2, Health_nx2, I_nx2, U_nx2], 
                 [action_nx2, tx_user_nx2, tx_v_nx2, tx_tok_nx2, tx_liquser_nx2, tx_tok2_nx2, revert_nx2]),        
-            W_nx11[1] <  W_nx2[1]
+            W_nx11[0] >  W_nx2[0]
             )
+    """
+
+    #prop = X[i][0] > 1
+    #prop = C[i][0] == r[i][0]+D[i][0] # Eq 3.1
+    #prop = d[i][0][0]==2
+
+    #prop = And(action[0]==Action.dep, action[1]==Action.bor, action[i]==Action.int, X[i][0] > 1)
+    #prop = And(d[i][0][0]==2, D[i][0] <= 3)
+
     
-            
-    #s.add(prop)
+    # case rep, f>0
+    prop = And(
+        And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
+        alfa == 0,
+        beta == 1,
+        C[i][0] == 1,
+        c[i][0][0] == 0,
+        d[i][0][0] == 1,
+        D[i][0] == 1,
+        #r[i][0] == 0,
+    )
+
     res = s.check(prop)
     print(f"\nStep {i}: ",res)
     if res == sat:
         model = s.model()
-        print(model)
-        print_model(model, i, state_variables[0], transition_variables[0])
+        #print(model)
+        d =  (sorted ([(d, model[d]) for d in model], key = lambda x: str(x[0])))
+        for el in d:
+            #print(f"{el}\t->\t{d[el]}")
+            print(f"{el}")
+        print_model(model, i+1, state_variables[0], transition_variables[0])
         break
 
 #print(s.assertions())
@@ -1022,4 +1079,4 @@ elif regr_test==4:
 
 
 #print_model(m)
-#print_model(m, Max_Steps, state_variables[0], transition_variables[0])
+#print_model(model, Max_Steps, state_variables[0], transition_variables[0])
