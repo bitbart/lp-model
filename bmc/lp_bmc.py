@@ -15,6 +15,7 @@ def print_model(m, i, state_variables, transition_variables):
         print(f"alfa: {m[alfa]}")
         print(f"beta: {m[beta]}")
     m_d = {str(d): (m[d].as_decimal(2) if type(m[d])==RatNumRef  else m[d] ) for d in m}
+    #m_d = {str(d): (m[d] if type(m[d])==RatNumRef  else m[d] ) for d in m}
     state_vars = list(state_variables.keys())
     trans_vars = list(transition_variables.keys())
     for v in trans_vars + state_vars:
@@ -79,7 +80,7 @@ def printModel(m):
 s = Solver()
 
 
-Max_Steps = 9
+Max_Steps = 15
 States = range(Max_Steps)
 
 # number of users
@@ -94,11 +95,11 @@ Tokens = range(nTokens)
 # Liquidation threshold
 Tliq = Real('TLiq')
 s.add(Tliq > 0)
-s.add(Tliq <= 1)
+s.add(Tliq < 1)
 
 # Reward factor
 Rliq = Real('RLiq')
-s.add(Rliq > 0)
+s.add(Rliq > 1)
 
 
 # wallets
@@ -152,6 +153,7 @@ I = [[Real("I_s%s_t%s" % (state, token)) for token in Tokens] for state in State
 
 # Param for linear utilization interest rate function
 alfa, beta = Reals('alfa beta') 
+s.add(beta > 0)
 
 # Utilization
 U = [[Real("U_s%s_t%s" % (state, token)) for token in Tokens] for state in States]
@@ -965,11 +967,110 @@ def step_trans(state_vars, next_state_vars, trans_vars):
         )
     return next_state
 
+
+def lem51(action, greater, i):
+    if action == 'dep' and greater:
+        return And(
+            And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
+            alfa == 0,
+            beta == 1,
+            c[i][0][0] == 0,
+            C[i][0] == 1,
+            d[i][0][0] == 1,
+            D[i][0] == 1,
+            r[i][0] == 0,
+        )        
+    elif action == 'dep' and not greater:
+        return And(
+            And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
+            alfa == 1,
+            beta == 1/8,
+            c[i][0][0] == 1,
+            C[i][0] == 2,
+            d[i][0][0] == 1/32,
+            D[i][0] == 1,
+            r[i][0] == 1,
+        ) 
+    elif action == 'bor' and greater:
+        return And(
+            And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
+            alfa == 3,
+            beta == 1/16,
+            c[i][0][0] == 2,
+            C[i][0] == 3,
+            d[i][0][0] == 1/32,
+            D[i][0] == 1,
+            r[i][0] == 2,
+        )        
+    elif action == 'bor' and not greater:
+        return And(
+            And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
+            alfa == 4,
+            beta == 1,
+            c[i][0][0] == 1/2,
+            C[i][0] == 1,
+            d[i][0][0] == 1/4,
+            D[i][0] == 1/2,
+            r[i][0] == 1/2,
+        )     
+    elif action == 'rep' and greater:
+        return And(
+            And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
+            alfa == 0,
+            beta == 1,
+            C[i][0] == 1,
+            c[i][0][0] == 0,
+            d[i][0][0] == 1,
+            D[i][0] == 1,
+            r[i][0] == 0,
+        )        
+    elif action == 'rep' and not greater:
+        return And(
+            And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
+            alfa == 1,
+            beta == 1/2,
+            C[i][0] == 1,
+            c[i][0][0] == 0,
+            d[i][0][0] == 3/4,
+            D[i][0] == 1,
+            r[i][0] == 0,
+        )   
+    elif action == 'rdm' and greater:
+        return And(
+            And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
+            alfa == 1,
+            beta == 1,
+            c[i][0][0] == 2,
+            C[i][0] == 2,
+            d[i][0][0] == 2/5,
+            D[i][0] == 1,
+            r[i][0] == 1,
+        )        
+    elif action == 'rdm' and not greater:
+        return And(
+            And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
+            alfa == 0,
+            beta == 2,
+            c[i][0][0] == 1,
+            C[i][0] == 1,
+            d[i][0][0] == 0,
+            D[i][0] == 0,
+            r[i][0] == 1,
+        )   
+
 for i in States[:-1]:
     print(i)
     s.add(state_conditions(*[var[i] for var in list_state_variables]))
     s.add(state_conditions(*[var[i+1] for var in list_state_variables]))
-    s.add(And(action[i] != Action.int, action[i] != Action.px, action[i] != Action.liq,  action[i] != Action.swp))
+    s.add(action[0]==Action.dep)
+    s.add(action[1]==Action.dep)
+    s.add(action[2]==Action.bor)
+    s.add(action[3]==Action.bor)
+    #s.add(action[4]==Action.dep)
+    #s.add(action[5]==Action.dep)
+    s.add(Or(action[i] == Action.dep, action[i] == Action.bor))
+    #s.add(Or(action[i] == Action.dep, action[i] == Action.bor, action[i] == Action.int))
+    #s.add(And(action[i] != Action.int, action[i] != Action.px, action[i] != Action.liq,  action[i] != Action.swp))
     #s.add(And(action[i] != Action.px, action[i] != Action.liq,  action[i] != Action.swp))
 
     next_state = step_trans([var[i] for var in list_state_variables], 
@@ -1023,18 +1124,25 @@ for i in States[:-1]:
     #prop = And(action[0]==Action.dep, action[1]==Action.bor, action[i]==Action.int, X[i][0] > 1)
     #prop = And(d[i][0][0]==2, D[i][0] <= 3)
 
-    
-    # case rep, f>0
-    prop = And(
-        And([p[j][tok]==1 for tok in Tokens for j in range(i)]),
-        alfa == 0,
-        beta == 1,
-        C[i][0] == 1,
-        c[i][0][0] == 0,
-        d[i][0][0] == 1,
-        D[i][0] == 1,
-        #r[i][0] == 0,
-    )
+
+    s.add(Tliq==0.9)
+    s.add(Rliq==1.1)
+    act_lem = 'rdm'
+    greater = True
+
+    print(f"{act_lem=}")
+    print(f"{greater=}")
+
+    prop = lem51(act_lem,greater, i)    
+
+    s2 = Solver()
+    s2.add(s.assertions())
+    s2.add(prop)
+    text = s2.to_smt2()
+    text = '(set-logic ALL)\n' + text + '\n(get-model)' 
+    filename = f"lemma5.1/{act_lem}_{greater}.smt2"
+    with open(filename, 'w') as my_file:
+        my_file.write(text)
 
     res = s.check(prop)
     print(f"\nStep {i}: ",res)
@@ -1042,9 +1150,9 @@ for i in States[:-1]:
         model = s.model()
         #print(model)
         d =  (sorted ([(d, model[d]) for d in model], key = lambda x: str(x[0])))
-        for el in d:
+        #for el in d:
             #print(f"{el}\t->\t{d[el]}")
-            print(f"{el}")
+        #    print(f"{el}")
         print_model(model, i+1, state_variables[0], transition_variables[0])
         break
 
