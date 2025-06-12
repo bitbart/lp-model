@@ -1,0 +1,28 @@
+# Example in Section 2.4 of the paper
+# python blockchain.py examples-lmcs/trace1.txt
+
+# Set the protocol parameters
+set_liq_threshold(2/3)
+set_liq_reward_factor(1.1)
+set_interest_rate(0, 0.09)
+
+# Set the initial user balances
+A:faucet(100:T0)
+B:faucet(50:T1)
+
+# Execution trace
+A:deposit(50:T0)
+B:deposit(50:T1)
+B:borrow(30:T0)
+accrue_interest
+B:repay(5:T0)
+set_price(T0,1.3)
+
+
+# A:liquidate(6:T0,B,T1) # better to wait before liquidating
+accrue_interest
+
+
+# Outputs the net worth of A
+net_worth(A)
+
