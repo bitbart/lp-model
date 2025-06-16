@@ -1,5 +1,3 @@
-# Example in Section 2.4 of the paper
-# python blockchain.py examples-lmcs/trace1.txt
 
 # Set the protocol parameters
 set_liq_threshold(2/3)
