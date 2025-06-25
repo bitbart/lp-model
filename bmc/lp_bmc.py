@@ -204,21 +204,21 @@ def state_conditions(w_i, r_i, c_i, d_i, B_i, C_i, D_i, p_i,
         # def of wallet value
         And(flatten(
                     [
-                        Ww_i[user] == sum(flatten(list([w_i[token][user]] for token in Tokens)))   
+                        Ww_i[user] == sum(flatten(list([w_i[token][user]*p_i[token]] for token in Tokens)))   
                         for user in Users
                     ]
             )),
         # def of credits value
         And(flatten(
                     [
-                        Wc_i[user] == sum(flatten(list([c_i[token][user]] for token in Tokens)))   
+                        Wc_i[user] == sum(flatten(list([c_i[token][user]*p_i[token]*X_i[token]] for token in Tokens)))   
                         for user in Users
                     ]
             )),
         # def of debts value
         And(flatten(
                     [
-                        Wd_i[user] == sum(flatten(list([d_i[token][user]] for token in Tokens)))   
+                        Wd_i[user] == sum(flatten(list([d_i[token][user]*p_i[token]] for token in Tokens)))   
                         for user in Users
                     ]
             )),
@@ -1103,6 +1103,17 @@ def props(name, i):
         )
     if name == 'cor3.5':
         prop = Not(X[i][0] >= 1)
+    # Thm 3.6 Preservation of net worth with hyp. tx!=px
+    if name == 'thm3.6_with_px':     
+        prop = Not(
+            W[i][0] == W[i+1][0], 
+                   )
+    # Thm 3.6 Preservation of net worth without hyp. tx!=px
+    if name == 'thm3.6_without_px':     
+        prop = Not(Implies(
+            action[i] != Action.px,
+            W[i][0] == W[i+1][0], 
+                   ))
     return prop
 
 for i in States[:-1]:
@@ -1187,7 +1198,7 @@ for i in States[:-1]:
     #print(f"{greater=}")
     #prop = lem51(act_lem,greater, i)    
     #filename = f"lemma5.1/{act_lem}_{greater}.smt2"
-    prop_name = "cor3.5"
+    prop_name = "thm3.6_without_px"
     prop = props(prop_name,i) 
     filename = f"{prop_name}.smt2"
 
