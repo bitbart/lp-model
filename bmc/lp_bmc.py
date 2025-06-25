@@ -1066,11 +1066,43 @@ def lem51(action, greater, i):
 def props(name, i):
     # Lemma 3.2 Preservation of base tokens without hyp. tx!=swp
     if name == 'lemma3.2_with_swap':     
-        prop = B[i][0] + r[i][0] != B[i+1][0] + r[i+1][0] 
+        prop = Not(B[i][0] + r[i][0] == B[i+1][0] + r[i+1][0])
     # Lemma 3.2 Preservation of base tokens with hyp. tx!=swp
     if name == 'lemma3.2_without_swap':     
-        prop = And(B[i][0] + r[i][0] != B[i+1][0] + r[i+1][0], 
-                   action[i]!=Action.swp )
+        prop = Not(Implies(
+            action[i] != Action.swp,
+            B[i][0] + r[i][0] == B[i+1][0] + r[i+1][0], 
+                   ))
+    # Lemma 3.3 Zero credit supply implies zero reserves and debts
+    if name == 'lemma3.3':     
+        prop = Not(Implies(C[i][0] == 0,
+                       And(r[i][0] == 0,
+                           D[i][0] == 0)
+                        ))
+    # Lemma 3.4 Monotonicity of exchange rate
+    if name == 'lemma3.4':
+        prop = Not(
+            If(
+                And(
+                    action[i] == Action.int, 
+                    D[i][0] > 0
+                    ),
+                And(
+                    X[i+1][0] == X[i][0] + D[i][0]/C[i][0]*I[i][0],
+                    X[i+1][0] > X[i][0]
+                ),
+                If( 
+                    And(
+                        action[i] == Action.rdm, 
+                        C[i+1][0] == 0
+                        ),
+                    X[i+1][0] == 1,
+                    X[i+1][0] == X[i][0]
+                )
+            )
+        )
+    if name == 'cor3.5':
+        prop = Not(X[i][0] >= 1)
     return prop
 
 for i in States[:-1]:
@@ -1155,7 +1187,7 @@ for i in States[:-1]:
     #print(f"{greater=}")
     #prop = lem51(act_lem,greater, i)    
     #filename = f"lemma5.1/{act_lem}_{greater}.smt2"
-    prop_name = "lemma3.2_without_swap"
+    prop_name = "cor3.5"
     prop = props(prop_name,i) 
     filename = f"{prop_name}.smt2"
 
