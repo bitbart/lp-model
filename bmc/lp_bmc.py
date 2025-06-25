@@ -768,9 +768,9 @@ def priceupdate(
         action_now, tx_user_now, tx_v_now, tx_tok_now, tx_liquser_now, tx_tok2_now, revert_now,
     ):
     conditions = And(
+        tx_v_now != 0,
         And([Implies(
             And(tok == tx_tok_now), 
-            tx_v_now != 0,
             p_now[tok] + tx_v_now > 0
         ) 
         for tok in Tokens]),
@@ -1114,6 +1114,61 @@ def props(name, i):
             action[i] != Action.px,
             W[i][0] == W[i+1][0], 
                    ))
+        
+    # Lemma 4.1 Gain from user actions case 1 with a missing hypothesis
+    if name == 'lemma4.1_case1_missing_hyp':     
+        prop = Not(Implies(
+            And(action[i] != Action.px, action[i] != Action.int, Not(revert[i])),
+            (W[i+1][0] - W[i][0] == 0)
+            == # if and only if
+            (action[i] != Action.liq)
+                   ))
+    # Lemma 4.1 Gain from user actions case 1
+    if name == 'lemma4.1_case1':     
+        prop = Not(Implies(
+            And(action[i] != Action.px, action[i] != Action.int, Not(revert[i])),
+            (W[i+1][0] - W[i][0] == 0)
+            == # if and only if
+            Or(action[i] != Action.liq, tx_user[i] != 0, tx_liquser[i] != 0)
+                   ))
+    # Lemma 4.1 Gain from user actions case 2
+    if name == 'lemma4.1_case2':     
+        prop = Not(Implies(
+            And(action[i] != Action.px, action[i] != Action.int, Not(revert[i])),
+            (W[i+1][0] - W[i][0] > 0)
+            == # if and only if
+            And(action[i] == Action.liq, tx_user[i] == 0)
+            # splitting iff as If and Onlyif:
+            #And(
+                #Implies(And(action[i] == Action.liq, tx_user[i] == 0),
+                #    (W[i+1][0] - W[i][0] > 0)),
+                #Implies((W[i+1][0] - W[i][0] > 0),
+                #    And(action[i] == Action.liq, tx_user[i] == 0))
+            #)
+                   ))
+    # Lemma 4.1 Gain from user actions case 3
+    if name == 'lemma4.1_case3':     
+        prop = Not(Implies(
+            And(action[i] != Action.px, action[i] != Action.int, Not(revert[i])),
+            (W[i+1][0] - W[i][0] < 0)
+            == # if and only if
+            And(action[i] == Action.liq, tx_liquser[i] == 0)
+            # splitting iff as If and Onlyif:
+            #And(
+                #Implies(And(action[i] == Action.liq, tx_liquser[i] == 0),
+                #    (W[i+1][0] - W[i][0] > 0)),
+                #Implies((W[i+1][0] - W[i][0] > 0),
+                #    And(action[i] == Action.liq, tx_liquser[i] == 0))
+            #)
+                   ))
+    # Lemma 4.2 Gain from price updates
+    if name == 'lemma4.2':     
+        prop = Not(Implies(
+            And(action[i] == Action.px, tx_tok[i] == 0, Not(revert[i])),
+            W[i+1][0] - W[i][0]
+            == 
+            (w[i][0][0] + c[i][0][0]*X[i][0] - d[i][0][0]) * tx_v[i]
+                   ))
     return prop
 
 for i in States[:-1]:
@@ -1198,7 +1253,7 @@ for i in States[:-1]:
     #print(f"{greater=}")
     #prop = lem51(act_lem,greater, i)    
     #filename = f"lemma5.1/{act_lem}_{greater}.smt2"
-    prop_name = "thm3.6_without_px"
+    prop_name = "lemma4.2"
     prop = props(prop_name,i) 
     filename = f"{prop_name}.smt2"
 
