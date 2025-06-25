@@ -36,19 +36,19 @@ def print_model(m, i, state_variables, transition_variables):
         if "_t" not in first_key and "_u" in first_key and not v in trans_vars:  # var only depends on user
             #print("var only depends on user")
             for user in Users:
-                print(f'U{user}\t\t','\t'.join([str(m_d[f"{v}_s{state}_u{user}"]) for state in States[:i]]), end="\n\t")
+                print(f'U{user}\t\t','\t'.join([str(m_d[f"{v}_s{state}_u{user}"]) for state in States[:i+1]]), end="\n\t")
         elif "_t" in first_key and "_u" not in first_key and not v in trans_vars :  # var only depends on token
             #print("var only depends on token")
             for token in Tokens:
-                print(f'T{token}\t\t','\t'.join([str(m_d[f"{v}_s{state}_t{token}"]) for state in States[:i]]), end="\n\t")
+                print(f'T{token}\t\t','\t'.join([str(m_d[f"{v}_s{state}_t{token}"]) for state in States[:i+1]]), end="\n\t")
         elif "_t" in first_key and "_u" in first_key  and not v in trans_vars:  # var depends on both token and user
             #print("var depends on both users and tokens")
             for token in Tokens:
                 print(f'T{token}', end="")
                 for user in Users:
-                    print(f'\tU{user}\t','\t'.join([str(m_d[f"{v}_s{state}_t{token}_u{user}"]) for state in States[:i]]), end="\n\t")
+                    print(f'\tU{user}\t','\t'.join([str(m_d[f"{v}_s{state}_t{token}_u{user}"]) for state in States[:i+1]]), end="\n\t")
         else:   
-            print(f'\t\t','\t'.join([str(m_d[f"{v}_s{state}"]) for state in States[:i-1]]), end="\n\t")
+            print(f'\t\t','\t'.join([str(m_d[f"{v}_s{state}"]) for state in States[:i]]), end="\n\t")
             #print(f'\t\t','\t'.join([str(m_d_v[el]) for el in m_d_v.keys()]), end="\n\t")
                 
 
@@ -116,9 +116,11 @@ c = [[[Real("c_s%s_t%s_u%s" % (state, token, user)) for user in Users] for token
 # debts map
 d = [[[Real("d_s%s_t%s_u%s" % (state, token, user)) for user in Users] for token in Tokens] for state in States]
 
+# wallet supply
+B = [[Real("B_s%s_t%s" % (state, token)) for token in Tokens] for state in States]
+
 # credits supply
 C = [[Real("C_s%s_t%s" % (state, token)) for token in Tokens] for state in States]
-
 
 # debts supply
 D = [[Real("D_s%s_t%s" % (state, token)) for token in Tokens] for state in States]
@@ -158,7 +160,7 @@ s.add(beta > 0)
 # Utilization
 U = [[Real("U_s%s_t%s" % (state, token)) for token in Tokens] for state in States]
 
-def state_conditions(w_i, r_i, c_i, d_i,  C_i, D_i, p_i, 
+def state_conditions(w_i, r_i, c_i, d_i, B_i, C_i, D_i, p_i, 
                      X_i, Ww_i, Wc_i, Wd_i, W_i,
                      Coll_i, Health_i, I_i, U_i):
     return And(
@@ -166,6 +168,13 @@ def state_conditions(w_i, r_i, c_i, d_i,  C_i, D_i, p_i,
         And(flatten([[c_i[token][user] >= 0 for user in Users] for token in Tokens])),
         And(flatten([[d_i[token][user] >= 0 for user in Users] for token in Tokens])),
         And(flatten([r_i[token] >= 0 for token in Tokens])),
+        # def of wallet supply
+        And(flatten(
+                [
+                    B_i[token] == sum(flatten(list([w_i[token][user]] for user in Users)))   
+                    for token in Tokens
+                ]
+            )),
         # def of credits supply
         And(flatten(
                 [
@@ -271,7 +280,7 @@ def initial_conditions():
         And(flatten([[d[0][token][user] == 0 for user in Users] for token in Tokens]))
     )
 
-list_state_variables = [ w, r, c, d, C, D, p, X, Ww, Wc, Wd, W, Coll, Health, I, U]
+list_state_variables = [ w, r, c, d, B, C, D, p, X, Ww, Wc, Wd, W, Coll, Health, I, U]
 
 
 state_variables = [
@@ -280,6 +289,7 @@ state_variables = [
     'r':r[state],
     'c':c[state],
     'd':d[state],
+    'B':B[state],
     'C':C[state],
     'D':D[state],
     'p':p[state],
@@ -395,8 +405,8 @@ def same_state(w_now, r_now, c_now, d_now, p_now,
 
 
 def deposit(
-        w_now, r_now, c_now, d_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
-        w_next, r_next, c_next, d_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
+        w_now, r_now, c_now, d_now, B_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
+        w_next, r_next, c_next, d_next, B_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
         action_now, tx_user_now, tx_v_now, tx_tok_now, tx_liquser_now, tx_tok2_now, revert_now,
     ):
     conditions = And(
@@ -438,8 +448,8 @@ def deposit(
     ))
 
 def redeem(        
-        w_now, r_now, c_now, d_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
-        w_next, r_next, c_next, d_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
+        w_now, r_now, c_now, d_now, B_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
+        w_next, r_next, c_next, d_next, B_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
         action_now, tx_user_now, tx_v_now, tx_tok_now, tx_liquser_now, tx_tok2_now, revert_now,
 
     ):
@@ -487,8 +497,8 @@ def redeem(
 
 
 def borrow(
-        w_now, r_now, c_now, d_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
-        w_next, r_next, c_next, d_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
+        w_now, r_now, c_now, d_now, B_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
+        w_next, r_next, c_next, d_next, B_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
         action_now, tx_user_now, tx_v_now, tx_tok_now, tx_liquser_now, tx_tok2_now, revert_now,
     ):
     conditions = And(
@@ -535,8 +545,8 @@ def borrow(
 
 
 def repay(        
-        w_now, r_now, c_now, d_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
-        w_next, r_next, c_next, d_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
+        w_now, r_now, c_now, d_now, B_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
+        w_next, r_next, c_next, d_next, B_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
         action_now, tx_user_now, tx_v_now, tx_tok_now, tx_liquser_now, tx_tok2_now, revert_now,
     ):
     conditions = And(
@@ -583,8 +593,8 @@ def repay(
 
 
 def liquidate(
-        w_now, r_now, c_now, d_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
-        w_next, r_next, c_next, d_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
+        w_now, r_now, c_now, d_now, B_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
+        w_next, r_next, c_next, d_next, B_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
         action_now, tx_user_now, tx_v_now, tx_tok_now, tx_liquser_now, tx_tok2_now, revert_now,
     ):
     #vc1 = (tx_v_now / X_now[tok_liqed] * p_now[tok] / p_now[tok_liqed] * Rliq) 
@@ -691,20 +701,21 @@ def liquidate(
 
 
 def swap(
-        w_now, r_now, c_now, d_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
-        w_next, r_next, c_next, d_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
+        w_now, r_now, c_now, d_now, B_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
+        w_next, r_next, c_next, d_next, B_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
         action_now, tx_user_now, tx_v_now, tx_tok_now, tx_liquser_now, tx_tok2_now, revert_now,
     ):  
     conditions = And(
-        And([Implies(
-            And(tok == tx_tok_now, tok2 == tx_tok2_now, user == tx_user_now),
+        tx_tok_now != tx_tok2_now,
+        tx_v_now > 0,
+        And(
+            [Implies(
+            And(tok == tx_tok_now, user == tx_user_now),
             And( 
-                tok != tok2,
                 w_now[tok][user] >= tx_v_now,
             ), 
         ) 
-        for tok in Tokens for tok2 in Tokens for user in Users]),
-        tx_v_now > 0
+        for tok in Tokens for user in Users])   
     )
     return And(
         revert_now == Not(conditions),
@@ -714,46 +725,37 @@ def swap(
                    w_next, r_next, c_next, d_next, p_next),
         And(
             And([
-                    If(And(tok == tx_tok_now, tok2 == tx_tok2_now),    
+                    Implies(And(tok == tx_tok_now, tok2 == tx_tok2_now),    
                        And(                         # T0 
                         p_next[tok] == p_now[tok],
                         r_next[tok] == r_now[tok], 
+                        p_next[tok2] == p_now[tok2],
+                        r_next[tok2] == r_now[tok2], 
                         And([
                             If( user == tx_user_now, 
                                 And(
                                     w_next[tok][user] ==  w_now[tok][user] - tx_v_now, 
                                     c_next[tok][user] ==  c_now[tok][user], 
                                     d_next[tok][user] ==  d_now[tok][user], 
+                                    w_next[tok2][user] ==  w_now[tok2][user] + tx_v_now*p_now[tok]/p_now[tok2], 
+                                    c_next[tok2][user] ==  c_now[tok2][user], 
+                                    d_next[tok2][user] ==  d_now[tok2][user], 
                                 ),
                             And(
                                 w_next[tok][user] ==  w_now[tok][user], 
                                 c_next[tok][user] ==  c_now[tok][user], 
                                 d_next[tok][user] ==  d_now[tok][user], 
-                            )
-                            ) for user in Users]),
-                          And(          #  T1
-                        p_next[tok2] == p_now[tok2],
-                        r_next[tok2] == r_now[tok2], 
-                        And([
-                            If( user == tx_user_now, 
-                                And(
-                                    w_next[tok2][user] ==  w_now[tok2][user] +  tx_v_now*p_now[tok]/p_now[tok2] , 
-                                    c_next[tok2][user] ==  c_now[tok2][user], 
-                                    d_next[tok2][user] ==  d_now[tok2][user], 
-                                ),
-                            And(
                                 w_next[tok2][user] ==  w_now[tok2][user], 
                                 c_next[tok2][user] ==  c_now[tok2][user], 
                                 d_next[tok2][user] ==  d_now[tok2][user], 
                             )
-                            ) for user in Users])), 
-                       ),                      
+                            ) for user in Users]),          
                     If(And(tok != tx_tok_now, tok2 != tx_tok2_now),  # != T0, != T1
                     same_state_tok(w_now, r_now, c_now, d_now, p_now,
                      w_next, r_next, c_next, d_next, p_next,
                      tok),
                     True
-                    )
+                    ))
                     )
                 for tok in Tokens for tok2 in Tokens]),
         )
@@ -761,8 +763,8 @@ def swap(
 
 
 def priceupdate(
-        w_now, r_now, c_now, d_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
-        w_next, r_next, c_next, d_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
+        w_now, r_now, c_now, d_now, B_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
+        w_next, r_next, c_next, d_next, B_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
         action_now, tx_user_now, tx_v_now, tx_tok_now, tx_liquser_now, tx_tok2_now, revert_now,
     ):
     conditions = And(
@@ -800,8 +802,8 @@ def priceupdate(
 
 
 def intaccrual(
-        w_now, r_now, c_now, d_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
-        w_next, r_next, c_next, d_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
+        w_now, r_now, c_now, d_now, B_now, C_now, D_now, p_now, X_now, Ww_now, Wc_now, Wd_now, W_now, Coll_now, Health_now, I_now, U_now,
+        w_next, r_next, c_next, d_next, B_next, C_next, D_next, p_next, X_next, Ww_next, Wc_next, Wd_next, W_next, Coll_next, Health_next, I_next, U_next,
         action_now, tx_user_now, tx_v_now, tx_tok_now, tx_liquser_now, tx_tok2_now, revert_now,
     ):
     conditions = True
@@ -831,6 +833,7 @@ w_nx1 = [[Real("w_nx1_t%s_u%s" % (token, user)) for user in Users] for token in 
 r_nx1 = [Real("r_nx1_t%s" % (token)) for token in Tokens]
 c_nx1 = [[Real("c_nx1_t%s_u%s" % (token, user)) for user in Users] for token in Tokens]
 d_nx1 = [[Real("d_nx1_t%s_u%s" % (token, user)) for user in Users] for token in Tokens]
+B_nx1 = [Real("B_nx1_t%s" % (token)) for token in Tokens]
 C_nx1 = [Real("C_nx1_t%s" % (token)) for token in Tokens]
 D_nx1 = [Real("D_nx1_t%s" % (token)) for token in Tokens]
 p_nx1 = [Real("p_nx1_t%s" % (token)) for token in Tokens]
@@ -849,6 +852,7 @@ w_nx11 = [[Real("w_nx11_t%s_u%s" % (token, user)) for user in Users] for token i
 r_nx11 = [Real("r_nx11_t%s" % (token)) for token in Tokens]
 c_nx11 = [[Real("c_nx11_t%s_u%s" % (token, user)) for user in Users] for token in Tokens]
 d_nx11 = [[Real("d_nx11_t%s_u%s" % (token, user)) for user in Users] for token in Tokens]
+B_nx11 = [Real("B_nx11_t%s" % (token)) for token in Tokens]
 C_nx11 = [Real("C_nx11_t%s" % (token)) for token in Tokens]
 D_nx11 = [Real("D_nx11_t%s" % (token)) for token in Tokens]
 p_nx11 = [Real("p_nx11_t%s" % (token)) for token in Tokens]
@@ -867,6 +871,7 @@ w_nx2 = [[Real("w_nx2_t%s_u%s" % (token, user)) for user in Users] for token in 
 r_nx2 = [Real("r_nx2_t%s" % (token)) for token in Tokens]
 c_nx2 = [[Real("c_nx2_t%s_u%s" % (token, user)) for user in Users] for token in Tokens]
 d_nx2 = [[Real("d_nx2_t%s_u%s" % (token, user)) for user in Users] for token in Tokens]
+B_nx2 = [Real("B_nx2_t%s" % (token)) for token in Tokens]
 C_nx2 = [Real("C_nx2_t%s" % (token)) for token in Tokens]
 D_nx2 = [Real("D_nx2_t%s" % (token)) for token in Tokens]
 p_nx2 = [Real("p_nx2_t%s" % (token)) for token in Tokens]
@@ -885,9 +890,9 @@ action_nx11, tx_user_nx11, tx_v_nx11, tx_tok_nx11, tx_liquser_nx11, tx_tok2_nx11
 action_nx2, tx_user_nx2, tx_v_nx2, tx_tok_nx2, tx_liquser_nx2, tx_tok2_nx2 = Reals('action_nx2 tx_user_nx2 tx_v_nx2 tx_tok_nx2 tx_liquser_nx2 tx_tok2_nx2')
 revert_nx1, revert_nx11, revert_nx2 = Reals('revert_nx1 revert_nx11 revert_nx2')
 
-s.add(state_conditions(w_nx1, r_nx1, c_nx1, d_nx1, C_nx1, D_nx1, p_nx1, X_nx1, Ww_nx1, Wc_nx1, Wd_nx1, W_nx1, Coll_nx1, Health_nx1, I_nx1, U_nx1))
-s.add(state_conditions(w_nx11, r_nx11, c_nx11, d_nx11, C_nx11, D_nx11, p_nx11, X_nx11, Ww_nx11, Wc_nx11, Wd_nx11, W_nx11, Coll_nx11, Health_nx11, I_nx11, U_nx11))
-s.add(state_conditions(w_nx2, r_nx2, c_nx2, d_nx2, C_nx2, D_nx2, p_nx2, X_nx2, Ww_nx2, Wc_nx2, Wd_nx2, W_nx2, Coll_nx2, Health_nx2, I_nx2, U_nx2))
+s.add(state_conditions(w_nx1, r_nx1, c_nx1, d_nx1, B_nx1, C_nx1, D_nx1, p_nx1, X_nx1, Ww_nx1, Wc_nx1, Wd_nx1, W_nx1, Coll_nx1, Health_nx1, I_nx1, U_nx1))
+s.add(state_conditions(w_nx11, r_nx11, c_nx11, d_nx11, B_nx11, C_nx11, D_nx11, p_nx11, X_nx11, Ww_nx11, Wc_nx11, Wd_nx11, W_nx11, Coll_nx11, Health_nx11, I_nx11, U_nx11))
+s.add(state_conditions(w_nx2, r_nx2, c_nx2, d_nx2, B_nx2, C_nx2, D_nx2, p_nx2, X_nx2, Ww_nx2, Wc_nx2, Wd_nx2, W_nx2, Coll_nx2, Health_nx2, I_nx2, U_nx2))
 
 
 
@@ -1058,17 +1063,33 @@ def lem51(action, greater, i):
             r[i][0] == 1,
         )   
 
+def props(name, i):
+    # Lemma 3.2 Preservation of base tokens without hyp. tx!=swp
+    if name == 'lemma3.2_with_swap':     
+        prop = B[i][0] + r[i][0] != B[i+1][0] + r[i+1][0] 
+    # Lemma 3.2 Preservation of base tokens with hyp. tx!=swp
+    if name == 'lemma3.2_without_swap':     
+        prop = And(B[i][0] + r[i][0] != B[i+1][0] + r[i+1][0], 
+                   action[i]!=Action.swp )
+    return prop
+
 for i in States[:-1]:
     print(i)
     s.add(state_conditions(*[var[i] for var in list_state_variables]))
     s.add(state_conditions(*[var[i+1] for var in list_state_variables]))
-    s.add(action[0]==Action.dep)
-    s.add(action[1]==Action.dep)
-    s.add(action[2]==Action.bor)
-    s.add(action[3]==Action.bor)
+    #s.add(w[0][0][0]==100)
+    #s.add(action[i]==Action.swp)
+    #s.add(revert[i]==False)
+    #s.add(tx_user[i]==0)
+    #s.add(tx_tok[i]==0)
+    #s.add(tx_tok2[i]==1)
+    #s.add(tx_v[i]==1)
+    #s.add(action[1]==Action.dep)
+    #s.add(action[2]==Action.bor)
+    #s.add(action[3]==Action.bor)
     #s.add(action[4]==Action.dep)
     #s.add(action[5]==Action.dep)
-    s.add(Or(action[i] == Action.dep, action[i] == Action.bor))
+    #s.add(Or(action[i] == Action.dep, action[i] == Action.bor))
     #s.add(Or(action[i] == Action.dep, action[i] == Action.bor, action[i] == Action.int))
     #s.add(And(action[i] != Action.int, action[i] != Action.px, action[i] != Action.liq,  action[i] != Action.swp))
     #s.add(And(action[i] != Action.px, action[i] != Action.liq,  action[i] != Action.swp))
@@ -1125,22 +1146,24 @@ for i in States[:-1]:
     #prop = And(d[i][0][0]==2, D[i][0] <= 3)
 
 
-    s.add(Tliq==0.9)
-    s.add(Rliq==1.1)
-    act_lem = 'rdm'
-    greater = True
+    #s.add(Tliq==0.9)
+    #s.add(Rliq==1.1)
 
-    print(f"{act_lem=}")
-    print(f"{greater=}")
-
-    prop = lem51(act_lem,greater, i)    
+    #act_lem = 'rdm'
+    #greater = True
+    #print(f"{act_lem=}")
+    #print(f"{greater=}")
+    #prop = lem51(act_lem,greater, i)    
+    #filename = f"lemma5.1/{act_lem}_{greater}.smt2"
+    prop_name = "lemma3.2_without_swap"
+    prop = props(prop_name,i) 
+    filename = f"{prop_name}.smt2"
 
     s2 = Solver()
     s2.add(s.assertions())
     s2.add(prop)
     text = s2.to_smt2()
     text = '(set-logic ALL)\n' + text + '\n(get-model)' 
-    filename = f"lemma5.1/{act_lem}_{greater}.smt2"
     with open(filename, 'w') as my_file:
         my_file.write(text)
 
