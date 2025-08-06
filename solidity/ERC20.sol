@@ -11,7 +11,10 @@ contract ERC20 is IERC20 {
     // workaround for bug in solc v0.8.30
     address constant ZERO_ADDRESS = address(0x0000000000000000000000000000000000000000);
 
-    mapping(address => uint256) private _balances;
+    // mapping(address => uint256) private _balances;
+    mapping(address account => uint256) private _balances;
+    mapping(address account => mapping(address spender => uint256)) private _allowances;
+
     uint256 private _totalSupply;
 
     constructor(uint256 amount) {
@@ -40,7 +43,7 @@ contract ERC20 is IERC20 {
     function allowance(address owner, address spender) public view returns (uint256) {
         require (owner != ZERO_ADDRESS);
         require (spender != ZERO_ADDRESS);
-        return _balances[owner];
+        return _allowances[owner][spender];
     }
 
     /**
@@ -50,7 +53,7 @@ contract ERC20 is IERC20 {
      * Requirements:
      * - `spender` cannot be the zero address.
      */
-    function approve(address spender, uint256 amount) public view returns (bool) {
+    function approve(address spender, uint256 amount) public returns (bool) {
         _approve(msg.sender, spender, amount);
         return true;
     }
@@ -100,22 +103,20 @@ contract ERC20 is IERC20 {
      * - `owner` cannot be the zero address.
      * - `spender` cannot be the zero address.
      */
-    function _approve(address owner, address spender, uint256 amount) internal pure {
+    function _approve(address owner, address spender, uint256 amount) internal {
         require (owner != ZERO_ADDRESS);
 	    require (spender != ZERO_ADDRESS);
-	    require (amount >= 0);
+        _allowances[owner][spender] = amount;
     }
 
     /**
      * @dev Updates `owner` s allowance for `spender` based on spent `amount`.
      *
-     * Does not update the allowance amount in case of infinite allowance.
-     * Revert if not enough allowance is available.
-     *
      */
-    function _spendAllowance(address owner, address spender, uint256 amount) internal view {
-        uint256 currentAllowance = allowance(owner, spender);
-        require (currentAllowance >= amount);
-    	_approve(owner, spender, currentAllowance);
+    function _spendAllowance(address owner, address spender, uint256 amount) internal {
+        uint256 currentAllowance = _allowances[owner][spender];
+        // if (currentAllowance != type(uint256).max)
+        require(currentAllowance >= amount, "ERC20: insufficient allowance");
+        _approve(owner, spender, currentAllowance - amount);
     }
 }
