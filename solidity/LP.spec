@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-import "erc20.spec";
+// import "erc20.spec";
 
 rule trace1 {
     env e1;
@@ -67,5 +67,4 @@ rule trace1 {
 
     assert(reserve_t0_3 == reserve_t0_2 - 30);
     assert(reserve_t1_3 == reserve_t1_2);
-
 }

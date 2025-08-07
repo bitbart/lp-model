@@ -36,14 +36,18 @@ contract LP {
         tokens.push(address(tok1));
     }
 
-    // XR(t) returns the exchange rate for token t (multiplied by 1000000)
-    function XR(address token) public view returns (uint256) {
-        if (totCredit[token] == 0) {
-            return 1000000;
+    function XR_def(uint credits, uint debits, uint res) internal pure returns (uint) {
+        if (credits == 0) {
+            return 1000000; // Default exchange rate if no credits
+        } else {
+            return ((res + debits) * 1000000) / credits;
         }
-        else {
-            return ((reserves[token] + totDebit[token]) * 1000000) / totCredit[token];
-        }    
+    }
+    
+    // XR(t) returns the exchange rate for token t (multiplied by 1000000)
+    function XR(address token) public view returns (uint) {
+        require (isValidToken(token), "Invalid token");
+        return XR_def(totCredit[token], totDebit[token], reserves[token]);
     }
 
     function valCredit(address a) public view returns (uint256) {

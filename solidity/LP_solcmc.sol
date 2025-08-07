@@ -7,11 +7,9 @@ import "./LP.sol";
 
 contract LPsolcmc is LP {
 
-    constructor(
-        address[] memory _tokens
-    ) 
-    LP(_tokens)
-    { }
+    constructor(ERC20 _tok0, ERC20 _tok1)
+        LP(_tok0, _tok1) {}
+
 
     // Lemma 3.3: Ensure that the total credit and debit balances are consistent
     function invariant_credit_debit_zero() public view {
