@@ -22,14 +22,21 @@ contract LP {
     // total amount of debit tokens (used to compute exchange rate)
     mapping(address => uint256) public totDebit; // token -> amount
 
-    uint initBlock; // start time of the contract (used to compute interest)
-    // mapping (addres token => uint256 blocknum) lastTotDebitUpdate; // last time total totDebit was updated (used to compute XR)
-    // mapping (address borrower => uint256 blocknum) public lastIntUpdate; // last interest accrual time for eash borrower
+    // last block when interest was accrued for eash borrower
+    mapping (address token => mapping (address borrower => uint256 block)) lastAccrued;
+
+    // last block when totDebit was updated (used to compute XR)
+    mapping (address token => uint256 block) lastTotAccrued;
+
+    // token prices
+    mapping (address token => uint256 price) prices;
 
     IERC20 public tok0;
     IERC20 public tok1;
 
     address[] public tokens;
+
+    uint256 public immutable interestRatePerBlock = 10000; // interest rate per time unit * 1e6 (1%)
 
     // Constructor accepts arrays of borrow tokens and collateral tokens
     constructor(ERC20 _tok0, ERC20 _tok1) {
@@ -39,7 +46,9 @@ contract LP {
         tokens.push(address(tok0));
         tokens.push(address(tok1));
 
-        initBlock = block.number;
+        // in this version of the contract, token prices are constant
+        prices[address(tok0)] = 1;
+        prices[address(tok1)] = 2;
     }
 
     function XR_def(uint credits, uint debits, uint res) internal pure returns (uint) {
@@ -50,41 +59,75 @@ contract LP {
         }
     }
 
-    function accrueInt(uint debit_amount) internal view returns (uint debitWithInt) {
-        uint diff = block.number - initBlock;
-        debitWithInt = debit_amount * (1000000 + diff * interest_rate(token_addr)) / 1000000;
-        return debitWithInt;
+    // Update totDebit[token] by accruing interest for all borrowers
+    function _accrueTotInt(address token) internal {
+        uint lastTime = lastTotAccrued[token];
+        if (lastTime == 0) {    // happens on first deposit
+            lastTotAccrued[token] = block.timestamp;
+            return;
+        }
+    
+        uint elapsed = block.number - lastTime;
+        if (elapsed > 0 && totDebit[token] > 0) {
+            // Simple interest: debt += debt * rate * time
+            uint interest = (totDebit[token] * interestRatePerBlock * elapsed) / 1e6;
+            totDebit[token] += interest;
+        }
+
+        lastTotAccrued[token] = block.timestamp;
+    }
+
+    // Update debit[token][borrower] by accruing interest for a given borrower
+    function _accrueInt(address token, address borrower) internal {
+        uint lastTime = lastAccrued[token][borrower];
+        if (lastTime == 0) {    // happens on first deposit
+            lastAccrued[token][borrower] = block.timestamp;
+            return;
+        }
+    
+        uint elapsed = block.number - lastTime;
+        if (elapsed > 0 && debit[token][borrower] > 0) {
+            // Simple interest: debt += debt * rate * time
+            uint interest = (debit[token][borrower] * interestRatePerBlock * elapsed) / 1e6;
+            debit[token][borrower] += interest;
+        }
+
+        lastAccrued[token][borrower] = block.timestamp;
     }
 
     // XR(t) returns the exchange rate for token t (multiplied by 1000000)
+    // Assumes that interests on totDebit[token] have been accrued
     function XR(address token) public view returns (uint) {
         require (isValidToken(token), "Invalid token");
-        uint totDebitWithInt = accrueInt(totDebit[token_addr]);
-        return XR_def(totCredit[token], totDebitWithInt, reserves[token]);
+        return XR_def(totCredit[token], totDebit[token], reserves[token]);
     }
 
+    // Assumes that interests on totDebit have been accrued
     function valCredit(address a) public view returns (uint256) {
         uint256 val = 0;
         for (uint i = 0; i < tokens.length; i++) {
-            val += credit[tokens[i]][a];
+            val += credit[tokens[i]][a] * XR(tokens[i]) * getPrice(tokens[i]);
         }
         return val;
     }
 
+    // Assumes that interests on all debits of borrower a have been accrued
     function valDebit(address a) public view returns (uint256) {
         uint256 val = 0;
         for (uint i = 0; i < tokens.length; i++) {
-            val += debit[tokens[i]][a];
+            val += debit[tokens[i]][a] * getPrice(tokens[i]);
         }
         return val;
     }
 
+    // Assumes that interests on totDebit and on all debits of borrower a have been accrued
     function isCollateralized(address a) public view returns (bool) {
-        if (valDebit(a) == 0) {
+        uint vdA = valDebit(a); 
+        if (vdA == 0) {
             return true; // No debt, so always collateralized
         }
         // health factor (multiplied by 10e6)
-        uint256 hf = (valCredit(a) * tLiq) / valDebit(a);
+        uint256 hf = (valCredit(a) * tLiq) / vdA;
         return (hf >= 1000000);
     }
 
@@ -107,8 +150,10 @@ contract LP {
         ERC20 token = ERC20(token_addr);
 
         token.transferFrom(msg.sender, address(this), amount);
-         reserves[token_addr] += amount;
+        reserves[token_addr] += amount;
 
+        // accrues interests on totDebit[token] before computing XR 
+        _accrueTotInt(token_addr);
         uint256 amount_credit = (amount * 1000000) / XR(token_addr);
  
         credit[token_addr][msg.sender] += amount_credit;
@@ -119,7 +164,7 @@ contract LP {
         require(amount > 0, "Borrow: amount must be greater than zero");
         require(
             isValidToken(token_addr),
-            "Borow: invalid token"
+            "Borrow: invalid token"
         );
 
         // Check if the reserves are sufficient
@@ -128,6 +173,12 @@ contract LP {
         // Transfer tokens to the borrower
         ERC20 token = ERC20(token_addr);
         token.transfer(msg.sender, amount);
+
+        // accrues all interests before computing collateralization
+        for (uint i = 0; i < tokens.length; i++) {
+            _accrueTotInt(tokens[i]);
+            _accrueInt(tokens[i], msg.sender);
+        }
 
         reserves[token_addr] -= amount;
         debit[token_addr][msg.sender] += amount;
@@ -169,6 +220,12 @@ contract LP {
             "Redeem: insufficient credits"
         );
 
+        // accrues all interests before computing XR and collateralization
+        for (uint i = 0; i < tokens.length; i++) {
+            _accrueTotInt(tokens[i]);
+            _accrueInt(tokens[i], msg.sender);
+        }
+
         uint amount_rdm = (amount * XR(token_addr)) / 1000000;
         require(
             reserves[token_addr] >= amount_rdm,
@@ -186,15 +243,11 @@ contract LP {
         require(isCollateralized(msg.sender), "Redeem: user is not collateralized");
     }
 
-    function interest_rate(address token) public view returns (uint256) {
-        // For now, return a fixed rate of 0% per time unit (multiplied by 1000000)
-        return 0; // 0% interest rate
+    function getPrice(address token_addr) public view returns (uint256) {
+        require(
+            isValidToken(token_addr),
+            "Redeem: invalid token"
+        );
+        return prices[token_addr];
     }
-
-    function accrue_interest(address a) public returns (uint256) {
-        for (uint i = 0; i < tokens.length; i++) {
-            debit[tokens[i]][a] += debit[tokens[i]][a] * interest_rate(tokens[i]) / 1000000;
-        }
-    }
-
 }
