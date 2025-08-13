@@ -51,14 +51,6 @@ contract LP {
         prices[address(tok1)] = 2;
     }
 
-    function XR_def(uint credits, uint debits, uint res) internal pure returns (uint) {
-        if (credits == 0) {
-            return 1000000; // Default exchange rate if no credits
-        } else {
-            return ((res + debits) * 1000000) / credits;
-        }
-    }
-
     // Update totDebit[token] by accruing interest for all borrowers
     function _accrueTotInt(address token) internal {
         uint lastTime = lastTotAccrued[token];
@@ -93,6 +85,14 @@ contract LP {
         }
 
         lastAccrued[token][borrower] = block.timestamp;
+    }
+
+    function XR_def(uint credits, uint debits, uint res) internal pure returns (uint) {
+        if (credits == 0) {
+            return 1000000; // Default exchange rate if no credits
+        } else {
+            return ((res + debits) * 1000000) / credits;
+        }
     }
 
     // XR(t) returns the exchange rate for token t (multiplied by 1000000)
@@ -241,6 +241,10 @@ contract LP {
     
         // Check if the user is collateralized
         require(isCollateralized(msg.sender), "Redeem: user is not collateralized");
+    }
+
+    function liquidate(uint amount, address token_debit, address debtor, address token_credit) public pure {
+        // in this version, liquidate is disabled
     }
 
     function getPrice(address token_addr) public view returns (uint256) {
